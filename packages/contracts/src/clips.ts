@@ -97,6 +97,17 @@ export const clipSchema = z
     openingCaption: z.string(),
     segmentIds: z.array(z.number().int().nonnegative()),
     enabled: z.boolean(),
+    renderStatus: z.enum([
+      "idle",
+      "queued",
+      "rendering",
+      "completed",
+      "failed",
+    ]),
+    renderProgress: z.number().int().min(0).max(100),
+    renderError: z.string().nullable(),
+    outputFileName: z.string().nullable(),
+    renderedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })

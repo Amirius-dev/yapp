@@ -37,7 +37,7 @@ describe("transcription repository", () => {
         error_message TEXT,
         created_at INTEGER NOT NULL,
         started_at INTEGER,
-        finished_at INTEGER
+        finished_at INTEGER, payload_json TEXT
       );
       CREATE UNIQUE INDEX jobs_one_active_transcription_idx
         ON jobs(project_id, type) WHERE status IN ('queued', 'running');

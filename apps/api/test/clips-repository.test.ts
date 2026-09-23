@@ -43,7 +43,9 @@ describe("clips repository", () => {
         id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL,
         start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, hook_score INTEGER NOT NULL,
         reason TEXT NOT NULL, opening_caption TEXT NOT NULL, segment_ids_json TEXT NOT NULL,
-        enabled INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+        enabled INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+        render_status TEXT NOT NULL DEFAULT 'idle', render_progress INTEGER NOT NULL DEFAULT 0,
+        render_error TEXT, output_file_name TEXT, rendered_at INTEGER
       );
     `);
     database.sqlite

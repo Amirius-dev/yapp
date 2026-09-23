@@ -39,10 +39,11 @@ export const jobs = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    type: text("type").$type<"transcription">().notNull(),
+    type: text("type").$type<"transcription" | "render_clips">().notNull(),
     status: text("status").$type<JobStatus>().notNull().default("queued"),
     progress: integer("progress").notNull().default(0),
     errorMessage: text("error_message"),
+    payloadJson: text("payload_json"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     startedAt: integer("started_at", { mode: "timestamp_ms" }),
     finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
@@ -90,6 +91,14 @@ export const clips = sqliteTable(
     openingCaption: text("opening_caption").notNull(),
     segmentIdsJson: text("segment_ids_json").notNull(),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    renderStatus: text("render_status")
+      .$type<"idle" | "queued" | "rendering" | "completed" | "failed">()
+      .notNull()
+      .default("idle"),
+    renderProgress: integer("render_progress").notNull().default(0),
+    renderError: text("render_error"),
+    outputFileName: text("output_file_name"),
+    renderedAt: integer("rendered_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },

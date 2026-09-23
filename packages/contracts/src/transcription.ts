@@ -4,9 +4,10 @@ export const jobStatusSchema = z.enum([
   "queued",
   "running",
   "completed",
+  "completed_with_errors",
   "failed",
 ]);
-export const jobTypeSchema = z.literal("transcription");
+export const jobTypeSchema = z.enum(["transcription", "render_clips"]);
 
 export const jobSchema = z.object({
   id: z.uuid(),
@@ -14,7 +15,7 @@ export const jobSchema = z.object({
   type: jobTypeSchema,
   status: jobStatusSchema,
   progress: z.number().int().min(0).max(100),
-  model: z.string().min(1),
+  model: z.string().min(1).nullable(),
   errorMessage: z.string().nullable(),
   createdAt: z.iso.datetime(),
   startedAt: z.iso.datetime().nullable(),

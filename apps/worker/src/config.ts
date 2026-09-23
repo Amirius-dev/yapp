@@ -23,6 +23,10 @@ export const pythonPath = process.env.WHISPER_PYTHON ?? defaultPythonPath;
 export const pollIntervalMs = Number(
   process.env.WORKER_POLL_INTERVAL_MS ?? 1000,
 );
+export const ffmpegPath = process.env.FFMPEG_PATH ?? "ffmpeg";
+export const ffprobePath = process.env.FFPROBE_PATH ?? "ffprobe";
+export const remotionBrowserExecutable =
+  process.env.REMOTION_BROWSER_EXECUTABLE;
 
 export function assertPythonAvailable() {
   try {

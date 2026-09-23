@@ -281,9 +281,11 @@ PATCH  /api/projects/:id/clips/:clipId
 POST   /api/projects/:id/render
 GET    /api/projects/:id/jobs
 GET    /api/projects/:id/results
+GET    /api/projects/:id/source/media
+GET    /api/projects/:id/clips/:clipId/media
 ```
 
-## Локальный запуск после Этапа 4
+## Локальный запуск после Этапа 5
 
 Требования: Node.js 20+, pnpm, Python 3.9+ и FFmpeg с `ffprobe`. Если pnpm ещё
 не включён, выполните `corepack enable` один раз. На macOS FFmpeg можно
@@ -311,7 +313,18 @@ pnpm dev
 транскриптом, промптом, JSON Schema и контекстом проекта. Пользователь вручную
 передаёт пакет выбранному AI, вставляет полученный JSON, проверяет preview и
 явно подтверждает импорт. Предложения и правки редактора clips сохраняются в
-SQLite. Никакие AI API или CLI-агенты не вызываются.
+SQLite. После подтверждения clips страница рендера создаёт фоновую задачу:
+worker последовательно готовит H.264/AAC-фрагмент через FFmpeg, собирает
+вертикальный ролик 1080×1920 через Remotion и проверяет итог через ffprobe.
+Готовые MP4 находятся в `data/projects/{projectId}/outputs/`, доступны для
+Range-preview и скачивания через API. Никакие AI API или CLI-агенты не
+вызываются.
+
+Первый Remotion-рендер может занять больше времени: renderer подготавливает
+локальный Chromium. Для рендера API, worker и frontend должны работать
+одновременно; `pnpm dev` запускает все три процесса.
+Если автоматическая подготовка Chromium недоступна, укажите установленный
+браузер полным путём в `REMOTION_BROWSER_EXECUTABLE`.
 
 По умолчанию worker использует модель `small`. Для быстрой разработки можно
 запустить весь набор с `tiny`:

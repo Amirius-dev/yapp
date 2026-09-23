@@ -17,7 +17,7 @@ function toJobDto(row: JobRow, model: string): JobDto {
     type: row.type,
     status: row.status,
     progress: row.progress,
-    model,
+    model: row.type === "transcription" ? model : null,
     errorMessage: row.errorMessage,
     createdAt: row.createdAt.toISOString(),
     startedAt: row.startedAt?.toISOString() ?? null,

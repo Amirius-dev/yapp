@@ -30,6 +30,11 @@ function toDto(row: ClipRow): ClipDto {
     openingCaption: row.openingCaption,
     segmentIds: segmentIdsSchema.parse(JSON.parse(row.segmentIdsJson)),
     enabled: row.enabled,
+    renderStatus: row.renderStatus,
+    renderProgress: row.renderProgress,
+    renderError: row.renderError,
+    outputFileName: row.outputFileName,
+    renderedAt: row.renderedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

@@ -19,7 +19,6 @@ import {
   LayoutTemplate,
   LoaderCircle,
   MonitorPlay,
-  Pause,
   Play,
   Plus,
   Scissors,
@@ -41,7 +40,6 @@ import {
   StatusBadge,
 } from "./components";
 import { formatDuration, formatFileSize, statusMeta } from "./lib";
-import { demoClips } from "./mock-data";
 import {
   useAiPromptQuery,
   useClipsQuery,
@@ -60,6 +58,10 @@ import {
   useStartTranscriptionMutation,
   useTranscriptQuery,
 } from "./queries/transcription";
+import {
+  useRenderResultsQuery,
+  useStartRenderMutation,
+} from "./queries/render";
 import { useStudio } from "./studio-context";
 import type { Project } from "./types";
 import type { ClipDto, ClipsValidationResult } from "@studio/contracts";
@@ -1090,6 +1092,8 @@ function ClipCard({
     enabled: clip.enabled,
   });
   const updateMutation = useUpdateClipMutation(clip.projectId);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
   useEffect(() => {
     setDraft({
       title: clip.title,
@@ -1099,16 +1103,40 @@ function ClipCard({
       enabled: clip.enabled,
     });
   }, [clip]);
+  const togglePreview = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (!video.paused) {
+      video.pause();
+      return;
+    }
+    video.currentTime = draft.start;
+    await video.play();
+    setIsPreviewing(true);
+  };
   return (
     <article
       className={draft.enabled ? "clip-card" : "clip-card clip-disabled"}
     >
       <div className="clip-preview">
-        <div className="video-placeholder">
-          <span>9:16</span>
-          <Play />
-        </div>
-        <button aria-label="Воспроизвести фрагмент">
+        <video
+          ref={videoRef}
+          preload="metadata"
+          src={`/api/projects/${encodeURIComponent(clip.projectId)}/source/media`}
+          onTimeUpdate={(event) => {
+            if (event.currentTarget.currentTime >= draft.end) {
+              event.currentTarget.pause();
+              setIsPreviewing(false);
+            }
+          }}
+          onPause={() => setIsPreviewing(false)}
+        />
+        <button
+          aria-label={
+            isPreviewing ? "Остановить фрагмент" : "Воспроизвести фрагмент"
+          }
+          onClick={togglePreview}
+        >
           <Play />
         </button>
         <span className="preview-duration">
@@ -1305,11 +1333,14 @@ function ClipsWorkspace({ project }: { project: Project }) {
       <Notice>
         <CircleDashed />
         <div>
-          <strong>Следующий этап — монтаж</strong>
+          <strong>Готово к локальному рендеру</strong>
           <p>
-            {enabledCount} clips включено. Нарезка и рендер появятся на Этапе 5.
+            {enabledCount} clips включено и будет обработано последовательно.
           </p>
         </div>
+        <Link to={`/projects/${project.id}/render`}>
+          Перейти к рендеру <ArrowRight />
+        </Link>
       </Notice>
     </>
   );
@@ -1319,50 +1350,102 @@ export function RenderPage() {
   const project = useProject();
   if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
-  const clips = (project.clips.length ? project.clips : demoClips).filter(
-    (clip) => clip.enabled,
-  );
+  return <RenderWorkspace project={project} />;
+}
+
+function RenderWorkspace({ project }: { project: Project }) {
+  const query = useRenderResultsQuery(project.id);
+  const start = useStartRenderMutation(project.id);
+  if (query.isPending) return <ProjectLoading />;
+  if (query.isError)
+    return (
+      <EmptyState
+        icon={<AlertCircle />}
+        title="Не удалось получить очередь"
+        text={query.error.message}
+      />
+    );
+  const { clips, job, results } = query.data;
+  const enabled = clips.filter((clip) => clip.enabled);
+  const failed = enabled.filter((clip) => clip.renderStatus === "failed");
+  const active = job?.status === "queued" || job?.status === "running";
+  const progress = job?.progress ?? (results.length ? 100 : 0);
   return (
     <>
       <ProjectHeader project={project} active="render" />
       <PageTitle
         eyebrow="Очередь рендера"
         title="Собираем вертикальные ролики"
-        text="Это демонстрация будущего worker-процесса. Видео сейчас не обрабатывается."
-        action={<DemoBadge />}
+        text="FFmpeg нормализует исходник, затем Remotion собирает MP4 с captions и субтитрами."
+        action={
+          <Button
+            onClick={() => start.mutate({})}
+            disabled={active || !enabled.length || start.isPending}
+          >
+            {active ? <LoaderCircle className="spin" /> : <Play />}
+            {results.length ? "Рендерить недостающие" : "Начать рендер"}
+          </Button>
+        }
       />
       <div className="render-overview panel">
-        <div className="render-ring">
-          <span>68%</span>
+        <div
+          className="render-ring"
+          style={{
+            background: `conic-gradient(var(--violet) ${progress}%, #e6e8ed 0)`,
+          }}
+        >
+          <span>{progress}%</span>
         </div>
         <div>
           <span className="eyebrow">Общий прогресс</span>
           <h2>
-            {clips.length > 1 ? "Рендерим второй клип" : "Подготавливаем клип"}
+            {active
+              ? "Worker обрабатывает очередь"
+              : results.length
+                ? "Готовые клипы сохранены"
+                : "Очередь готова к запуску"}
           </h2>
           <p>Центральное кадрирование · 1080 × 1920 · MP4</p>
           <div className="progress-track">
-            <i style={{ width: "68%" }} />
+            <i style={{ width: `${progress}%` }} />
           </div>
         </div>
-        <Button variant="secondary">
-          <Pause /> Приостановить
-        </Button>
+        {failed.length > 0 && !active && (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              start.mutate({ clipIds: failed.map((clip) => clip.id) })
+            }
+          >
+            Повторить failed ({failed.length})
+          </Button>
+        )}
       </div>
+      {start.isError && (
+        <Notice tone="warning">
+          <AlertCircle />
+          <div>
+            <strong>Рендер не запущен</strong>
+            <p>{start.error.message}</p>
+          </div>
+        </Notice>
+      )}
       <div className="queue panel">
         <div className="panel-heading">
           <h3>Очередь</h3>
-          <span className="small-pill">{clips.length} клипа</span>
+          <span className="small-pill">{enabled.length} clips</span>
         </div>
-        {clips.map((clip, index) => {
-          const state = index === 0 ? "completed" : "rendering";
+        {enabled.map((clip) => {
+          const state = clip.renderStatus;
           return (
             <div className="queue-row" key={clip.id}>
               <div className={`queue-icon ${state}`}>
                 {state === "completed" ? (
                   <Check />
-                ) : (
+                ) : state === "queued" || state === "rendering" ? (
                   <LoaderCircle className="spin" />
+                ) : (
+                  <CircleDashed />
                 )}
               </div>
               <span>
@@ -1373,11 +1456,11 @@ export function RenderPage() {
               </span>
               <div className="queue-progress">
                 <div className="progress-track">
-                  <i
-                    style={{ width: state === "completed" ? "100%" : "44%" }}
-                  />
+                  <i style={{ width: `${clip.renderProgress}%` }} />
                 </div>
-                <small>{state === "completed" ? "Готово" : "44%"}</small>
+                <small>
+                  {state === "completed" ? "Готово" : `${clip.renderProgress}%`}
+                </small>
               </div>
             </div>
           );
@@ -1386,14 +1469,14 @@ export function RenderPage() {
       <Notice>
         <Sparkles />
         <div>
-          <strong>Демо очереди</strong>
+          <strong>Локальная обработка</strong>
           <p>
-            FFmpeg и Remotion не запускались. На Этапе 5 статусы будет обновлять
-            локальный worker.
+            Одновременно рендерится один clip. Состояние очереди хранится в
+            SQLite.
           </p>
         </div>
         <Link to={`/projects/${project.id}/results`}>
-          Посмотреть пример результатов <ArrowRight />
+          Открыть результаты <ArrowRight />
         </Link>
       </Notice>
     </>
@@ -1402,11 +1485,26 @@ export function RenderPage() {
 
 export function ResultsPage() {
   const project = useProject();
-  const { updateStatus } = useStudio();
   if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
-  const clips = (project.clips.length ? project.clips : demoClips).filter(
-    (clip) => clip.enabled,
+  return <ResultsWorkspace project={project} />;
+}
+
+function ResultsWorkspace({ project }: { project: Project }) {
+  const query = useRenderResultsQuery(project.id);
+  const retry = useStartRenderMutation(project.id);
+  if (query.isPending) return <ProjectLoading />;
+  if (query.isError)
+    return (
+      <EmptyState
+        icon={<AlertCircle />}
+        title="Не удалось получить результаты"
+        text={query.error.message}
+      />
+    );
+  const clips = query.data.results;
+  const failed = query.data.clips.filter(
+    (clip) => clip.enabled && clip.renderStatus === "failed",
   );
   return (
     <>
@@ -1416,47 +1514,89 @@ export function ResultsPage() {
           <CheckCircle2 />
         </div>
         <div>
-          <span className="eyebrow">Демо завершено</span>
+          <span className="eyebrow">Локальный рендер</span>
           <h1>Клипы готовы к просмотру</h1>
           <p>
-            {clips.length} вертикальных ролика · Настоящие файлы появятся после
-            подключения рендера.
+            {clips.length} готовых вертикальных ролика в локальном хранилище.
           </p>
         </div>
-        <Link
-          className="button button-secondary"
-          to="/projects"
-          onClick={() => updateStatus(project.id, "completed")}
-        >
+        <Link className="button button-secondary" to="/projects">
           Все проекты
         </Link>
       </div>
+      {!clips.length && (
+        <EmptyState
+          icon={<Film />}
+          title="Готовых роликов пока нет"
+          text="Запустите локальный рендер или повторите clips, завершившиеся с ошибкой."
+          action={
+            <Link
+              className="button button-secondary"
+              to={`/projects/${project.id}/clips`}
+            >
+              Вернуться к редактору clips
+            </Link>
+          }
+        />
+      )}
       <div className="result-grid">
-        {clips.map((clip, index) => (
-          <article className="result-card" key={clip.id}>
+        {clips.map((result, index) => (
+          <article className="result-card" key={result.clip.id}>
             <div className={`result-preview result-preview-${index + 1}`}>
-              <div className="fake-caption">{clip.openingCaption}</div>
-              <button aria-label={`Воспроизвести ${clip.title}`}>
-                <Play />
-              </button>
-              <span>{formatDuration(clip.end - clip.start)}</span>
+              <video controls preload="metadata" src={result.mediaUrl} />
+              <span>{formatDuration(result.durationSeconds)}</span>
             </div>
             <div className="result-copy">
               <span className="clip-index">
                 Клип {String(index + 1).padStart(2, "0")}
               </span>
-              <h3>{clip.title}</h3>
+              <h3>{result.clip.title}</h3>
               <div>
                 <span>1080 × 1920</span>
-                <span>MP4 · Демо</span>
+                <span>MP4 · {formatFileSize(result.fileSizeBytes)}</span>
+                <span>
+                  {result.clip.renderedAt
+                    ? new Date(result.clip.renderedAt).toLocaleString("ru-RU")
+                    : "Дата неизвестна"}
+                </span>
               </div>
-              <Button variant="secondary" disabled>
-                <Download /> Файл появится на Этапе 5
-              </Button>
+              <a
+                className="button button-secondary"
+                href={result.downloadUrl}
+                download
+              >
+                <Download /> Скачать MP4
+              </a>
             </div>
           </article>
         ))}
       </div>
+      {failed.length > 0 && (
+        <Notice tone="warning">
+          <AlertCircle />
+          <div>
+            <strong>{failed.length} clips требуют повторной попытки</strong>
+            <p>
+              {failed
+                .map((clip) => clip.renderError)
+                .filter(Boolean)
+                .join(" ")}
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            disabled={retry.isPending}
+            onClick={() =>
+              retry.mutate({ clipIds: failed.map((clip) => clip.id) })
+            }
+          >
+            Повторить failed
+          </Button>
+        </Notice>
+      )}
+      <Link to={`/projects/${project.id}/clips`}>
+        ← Вернуться к редактору clips
+      </Link>
       <div className="panel result-summary">
         <div>
           <ImageIcon />
@@ -1470,7 +1610,7 @@ export function ResultsPage() {
           <span>
             <strong>
               {formatDuration(
-                clips.reduce((sum, clip) => sum + clip.end - clip.start, 0),
+                clips.reduce((sum, result) => sum + result.durationSeconds, 0),
               )}
             </strong>
             <small>общая длительность</small>

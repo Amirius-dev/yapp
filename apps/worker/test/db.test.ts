@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   claimNextJob,
   completeJob,
+  finalizeRenderJob,
   recoverInterruptedJobs,
 } from "../src/db.js";
 
@@ -13,6 +14,7 @@ function createTestDatabase() {
       id TEXT PRIMARY KEY,
       status TEXT NOT NULL,
       source_file_path TEXT,
+      has_audio INTEGER,
       language TEXT,
       error_message TEXT,
       updated_at INTEGER NOT NULL
@@ -27,6 +29,7 @@ function createTestDatabase() {
       created_at INTEGER NOT NULL,
       started_at INTEGER,
       finished_at INTEGER
+      ,payload_json TEXT
     );
     CREATE TABLE transcript_segments (
       id TEXT PRIMARY KEY,
@@ -36,6 +39,15 @@ function createTestDatabase() {
       end_seconds REAL NOT NULL,
       text TEXT NOT NULL,
       UNIQUE(project_id, segment_index)
+    );
+    CREATE TABLE clips (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      render_status TEXT NOT NULL DEFAULT 'idle',
+      render_progress INTEGER NOT NULL DEFAULT 0,
+      render_error TEXT,
+      output_file_name TEXT,
+      rendered_at INTEGER
     );
   `);
   return db;
@@ -81,6 +93,8 @@ describe("worker persistence", () => {
     const job = claimNextJob(db);
     expect(job?.id).toBe("job-1");
     expect(claimNextJob(db)).toBeNull();
+    if (!job || job.type !== "transcription")
+      throw new Error("Expected transcription job");
     completeJob(db, job!, "ru", [
       { segmentIndex: 0, startSeconds: 0, endSeconds: 1.5, text: "Привет" },
     ]);
@@ -98,6 +112,52 @@ describe("worker persistence", () => {
     ).toEqual({
       segment_index: 0,
       text: "Привет",
+    });
+  });
+
+  it("recovers interrupted render clips as retryable failures", () => {
+    db.prepare(
+      "INSERT INTO clips (id, project_id, render_status) VALUES (?, ?, ?)",
+    ).run("clip-1", "project-1", "rendering");
+    db.prepare(
+      "INSERT INTO jobs (id, project_id, type, status, progress, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      "job-render",
+      "project-1",
+      "render_clips",
+      "running",
+      40,
+      JSON.stringify({ projectId: "project-1", clipIds: ["clip-1"] }),
+      1,
+    );
+
+    expect(recoverInterruptedJobs(db)).toBe(1);
+    expect(db.prepare("SELECT render_status FROM clips").get()).toEqual({
+      render_status: "failed",
+    });
+    expect(db.prepare("SELECT status FROM projects").get()).toEqual({
+      status: "reviewing_clips",
+    });
+  });
+
+  it("keeps successful clips when a render job partially fails", () => {
+    db.prepare(
+      "INSERT INTO clips (id, project_id, render_status) VALUES (?, ?, ?), (?, ?, ?)",
+    ).run("clip-1", "project-1", "completed", "clip-2", "project-1", "failed");
+    db.prepare(
+      "INSERT INTO jobs (id, project_id, type, status, progress, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run("job-render", "project-1", "render_clips", "running", 90, "{}", 1);
+    const result = finalizeRenderJob(db, {
+      id: "job-render",
+      projectId: "project-1",
+      type: "render_clips",
+      sourcePath: "/tmp/source.mp4",
+      sourceHasAudio: true,
+      clipIds: ["clip-1", "clip-2"],
+    });
+    expect(result.status).toBe("completed_with_errors");
+    expect(db.prepare("SELECT status FROM projects").get()).toEqual({
+      status: "reviewing_clips",
     });
   });
 });
