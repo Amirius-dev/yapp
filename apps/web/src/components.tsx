@@ -189,7 +189,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <div className="sidebar-footer">
           <DemoBadge />
-          <span>Этап 2 · локальные проекты</span>
+          <span>Этап 3 · локальная транскрипция</span>
         </div>
       </aside>
       {open && (

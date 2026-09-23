@@ -3,14 +3,15 @@
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "scripts": {
-    "dev": "corepack pnpm --parallel --filter @studio/api --filter @studio/web dev",
+    "dev": "corepack pnpm --filter @studio/api db:migrate && corepack pnpm --parallel --filter @studio/api --filter @studio/worker --filter @studio/web dev",
     "dev:web": "corepack pnpm --filter @studio/web dev",
     "dev:api": "corepack pnpm --filter @studio/api dev",
+    "dev:worker": "corepack pnpm --filter @studio/worker dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "corepack pnpm --recursive lint",
     "typecheck": "corepack pnpm --recursive typecheck",
-    "test": "corepack pnpm --filter @studio/api test",
+    "test": "corepack pnpm --filter @studio/api --filter @studio/worker test",
     "build": "corepack pnpm --filter @studio/web build"
   },
   "devDependencies": {

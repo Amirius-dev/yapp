@@ -1,21 +1,28 @@
 import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import { ZodError } from "zod";
-import { maxUploadBytes } from "./config.js";
+import { maxUploadBytes, whisperModel } from "./config.js";
 import { createDatabase } from "./db/client.js";
 import { HttpError } from "./lib/http-error.js";
 import { createProjectsRepository } from "./repositories/projects.js";
+import { createTranscriptionRepository } from "./repositories/transcription.js";
 import { registerProjectRoutes } from "./routes/projects.js";
+import { registerTranscriptionRoutes } from "./routes/transcription.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true, bodyLimit: 1024 * 1024 });
   const { db, sqlite } = createDatabase();
   const repository = createProjectsRepository(db);
+  const transcriptionRepository = createTranscriptionRepository(
+    db,
+    whisperModel,
+  );
 
   await app.register(multipart, {
     limits: { files: 1, fields: 0, fileSize: maxUploadBytes },
   });
   await registerProjectRoutes(app, { repository });
+  await registerTranscriptionRoutes(app, transcriptionRepository);
 
   app.get("/api/health", async () => ({ status: "ok" }));
 

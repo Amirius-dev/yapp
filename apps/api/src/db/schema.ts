@@ -1,5 +1,13 @@
-import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import type { ProjectMode, ProjectStatus } from "@studio/contracts";
+import { sql } from "drizzle-orm";
+import {
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
+import type { JobStatus, ProjectMode, ProjectStatus } from "@studio/contracts";
 
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
@@ -12,6 +20,7 @@ export const projects = sqliteTable("projects", {
   sourceFilePath: text("source_file_path"),
   sourceFileName: text("source_file_name"),
   sourceMimeType: text("source_mime_type"),
+  language: text("language"),
   durationSeconds: real("duration_seconds"),
   width: integer("width"),
   height: integer("height"),
@@ -23,4 +32,48 @@ export const projects = sqliteTable("projects", {
   errorMessage: text("error_message"),
 });
 
+export const jobs = sqliteTable(
+  "jobs",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    type: text("type").$type<"transcription">().notNull(),
+    status: text("status").$type<JobStatus>().notNull().default("queued"),
+    progress: integer("progress").notNull().default(0),
+    errorMessage: text("error_message"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    startedAt: integer("started_at", { mode: "timestamp_ms" }),
+    finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("jobs_project_id_idx").on(table.projectId),
+    uniqueIndex("jobs_one_active_transcription_idx")
+      .on(table.projectId, table.type)
+      .where(sql`${table.status} in ('queued', 'running')`),
+  ],
+);
+
+export const transcriptSegments = sqliteTable(
+  "transcript_segments",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    segmentIndex: integer("segment_index").notNull(),
+    startSeconds: real("start_seconds").notNull(),
+    endSeconds: real("end_seconds").notNull(),
+    text: text("text").notNull(),
+  },
+  (table) => [
+    uniqueIndex("transcript_segments_project_index_unique").on(
+      table.projectId,
+      table.segmentIndex,
+    ),
+  ],
+);
+
 export type ProjectRow = typeof projects.$inferSelect;
+export type JobRow = typeof jobs.$inferSelect;

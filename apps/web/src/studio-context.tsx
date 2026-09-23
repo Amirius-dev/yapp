@@ -41,7 +41,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           name: project.name,
           status: local?.status ?? project.status,
           durationSeconds: project.mediaInfo?.durationSeconds ?? 0,
-          language: "Не определён",
+          language: project.language ?? "Не определён",
           updatedAt: formatUpdatedAt(project.updatedAt),
           sourceName: project.sourceFileName ?? "Видео ещё не загружено",
           errorMessage: project.errorMessage ?? undefined,

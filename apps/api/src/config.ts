@@ -12,6 +12,7 @@ export const projectsRoot = resolve(dataRoot, "projects");
 export const apiPort = Number(process.env.API_PORT ?? 3001);
 export const apiHost = process.env.API_HOST ?? "127.0.0.1";
 export const ffprobePath = process.env.FFPROBE_PATH ?? "ffprobe";
+export const whisperModel = process.env.WHISPER_MODEL ?? "small";
 export const maxUploadBytes = Number(
   process.env.MAX_UPLOAD_BYTES ?? 10 * 1024 ** 3,
 );

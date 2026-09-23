@@ -29,7 +29,7 @@ import {
   Upload,
   WandSparkles,
 } from "lucide-react";
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Button,
@@ -47,6 +47,11 @@ import {
   useProjectQuery,
   useProjectsQuery,
 } from "./queries/projects";
+import {
+  useJobsQuery,
+  useStartTranscriptionMutation,
+  useTranscriptQuery,
+} from "./queries/transcription";
 import { useStudio } from "./studio-context";
 import type { Clip, Project } from "./types";
 
@@ -435,8 +440,8 @@ export function NewProjectPage() {
           <div>
             <strong>Локальная обработка</strong>
             <p>
-              Видео не отправляется в облако. Транскрипт на следующей странице
-              пока останется демонстрационным до Этапа 3.
+              Видео не отправляется в облако. Транскрипцию можно запустить на
+              следующей странице после старта локального worker.
             </p>
           </div>
         </Notice>
@@ -471,20 +476,47 @@ export function TranscriptPage() {
   const project = useProject();
   if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
-  const isProcessing = project.status === "transcribing";
+  return <TranscriptWorkspace project={project} />;
+}
+
+function TranscriptWorkspace({ project }: { project: Project }) {
+  const jobsQuery = useJobsQuery(project.id);
+  const latestJob = jobsQuery.data?.[0];
+  const isProcessing =
+    latestJob?.status === "queued" || latestJob?.status === "running";
+  const transcriptQuery = useTranscriptQuery(project.id, isProcessing);
+  const { refetch: refetchTranscript } = transcriptQuery;
+  const startMutation = useStartTranscriptionMutation(project.id);
+  const transcript = transcriptQuery.data;
+  const segments = transcript?.segments ?? [];
+
+  useEffect(() => {
+    if (latestJob?.status === "completed") void refetchTranscript();
+  }, [latestJob?.status, refetchTranscript]);
+
   return (
     <>
       <ProjectHeader project={project} active="transcript" />
-      <Notice>
-        <Sparkles />
-        <div>
-          <strong>Метаданные получены через ffprobe</strong>
-          <p>
-            Транскрипт ниже пока демонстрационный. Локальная транскрипция будет
-            подключена на Этапе 3.
-          </p>
-        </div>
-      </Notice>
+      {latestJob?.status === "failed" && (
+        <Notice tone="error">
+          <AlertCircle />
+          <div>
+            <strong>Транскрипция остановлена</strong>
+            <p>
+              {latestJob.errorMessage ?? "Неизвестная ошибка транскрипции."}
+            </p>
+          </div>
+        </Notice>
+      )}
+      {startMutation.isError && (
+        <Notice tone="error">
+          <AlertCircle />
+          <div>
+            <strong>Не удалось запустить транскрипцию</strong>
+            <p>{startMutation.error.message}</p>
+          </div>
+        </Notice>
+      )}
       <div className="workspace-grid">
         <section className="panel transcript-panel">
           <div className="panel-heading">
@@ -493,37 +525,79 @@ export function TranscriptPage() {
               <h2>Транскрипт</h2>
             </div>
             <span className="language-pill">
-              <Languages /> {project.language}
+              <Languages /> {transcript?.language ?? project.language}
             </span>
           </div>
           {isProcessing && (
             <div className="progress-card">
               <div className="progress-copy">
                 <span>
-                  <LoaderCircle className="spin" /> Транскрипция в демо-режиме
+                  <LoaderCircle className="spin" />
+                  {latestJob.status === "queued"
+                    ? "Ожидает worker"
+                    : "Транскрипция на устройстве"}
                 </span>
-                <strong>{project.progress ?? 42}%</strong>
+                <strong>{latestJob.progress}%</strong>
               </div>
               <div className="progress-track">
-                <i style={{ width: `${project.progress ?? 42}%` }} />
+                <i style={{ width: `${latestJob.progress}%` }} />
               </div>
-              <p>Можно изучить пример результата уже сейчас.</p>
+              <p>
+                Модель: {latestJob.model}. При первом запуске её скачивание
+                может занять несколько минут; точный прогресс загрузки модель не
+                сообщает.
+              </p>
             </div>
           )}
-          <div className="transcript-list">
-            {project.transcript.map((segment) => (
-              <div key={segment.id}>
-                <button
-                  aria-label={`Перейти к ${formatDuration(segment.start)}`}
+          {!latestJob || latestJob.status === "failed" ? (
+            <EmptyState
+              icon={<FileText />}
+              title={latestJob ? "Попробуйте ещё раз" : "Транскрипта пока нет"}
+              text="Запустите локальный worker, затем начните транскрипцию. Одновременно обрабатывается одна запись."
+              action={
+                <Button
+                  onClick={() => startMutation.mutate()}
+                  disabled={startMutation.isPending || !project.mediaInfo}
                 >
-                  <Play />
-                  {formatDuration(segment.start)}
-                </button>
-                <p>{segment.text}</p>
-                <span>#{segment.id}</span>
-              </div>
-            ))}
-          </div>
+                  {startMutation.isPending ? (
+                    <LoaderCircle className="spin" />
+                  ) : (
+                    <Play />
+                  )}
+                  {latestJob ? "Повторить транскрипцию" : "Начать транскрипцию"}
+                </Button>
+              }
+            />
+          ) : segments.length > 0 ? (
+            <div className="transcript-list">
+              {segments.map((segment) => (
+                <div key={segment.id}>
+                  <button
+                    aria-label={`Перейти к ${formatDuration(segment.startSeconds)}`}
+                  >
+                    <Play />
+                    {formatDuration(segment.startSeconds)}
+                  </button>
+                  <p>{segment.text}</p>
+                  <span>#{segment.segmentIndex + 1}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={
+                isProcessing ? <LoaderCircle className="spin" /> : <FileText />
+              }
+              title={
+                isProcessing ? "Распознаём речь" : "В записи нет сегментов"
+              }
+              text={
+                isProcessing
+                  ? "Готовые сегменты появятся после успешного завершения задачи."
+                  : "Транскрипция завершилась, но распознаваемой речи не найдено."
+              }
+            />
+          )}
         </section>
         <aside className="side-stack">
           <div className="panel">
@@ -539,13 +613,13 @@ export function TranscriptPage() {
                 <dt>
                   <Languages /> Язык
                 </dt>
-                <dd>{project.language}</dd>
+                <dd>{transcript?.language ?? project.language}</dd>
               </div>
               <div>
                 <dt>
                   <FileText /> Сегментов
                 </dt>
-                <dd>{project.transcript.length}</dd>
+                <dd>{segments.length}</dd>
               </div>
               {project.mediaInfo && (
                 <>
@@ -589,12 +663,18 @@ export function TranscriptPage() {
               Экспортируйте транскрипт и инструкцию для любого удобного
               ассистента.
             </p>
-            <Link
-              className="button button-primary"
-              to={`/projects/${project.id}/ai-export`}
-            >
-              Подготовить пакет <ArrowRight />
-            </Link>
+            {latestJob?.status === "completed" ? (
+              <Link
+                className="button button-primary"
+                to={`/projects/${project.id}/ai-export`}
+              >
+                Подготовить пакет <ArrowRight />
+              </Link>
+            ) : (
+              <Button disabled>
+                Сначала получите транскрипт <ArrowRight />
+              </Button>
+            )}
           </div>
         </aside>
       </div>

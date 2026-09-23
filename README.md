@@ -203,6 +203,7 @@ Backend валидирует его через Zod:
 created
 uploading
 probing
+ready_for_transcription
 transcribing
 ready_for_ai
 waiting_for_ai_result
@@ -281,11 +282,11 @@ GET    /api/projects/:id/jobs
 GET    /api/projects/:id/results
 ```
 
-## Локальный запуск после Этапа 2
+## Локальный запуск после Этапа 3
 
-Требования: Node.js 20+, pnpm и FFmpeg с `ffprobe`. Если pnpm ещё не включён,
-выполните `corepack enable` один раз. На macOS FFmpeg можно установить через
-Homebrew:
+Требования: Node.js 20+, pnpm, Python 3.9+ и FFmpeg с `ffprobe`. Если pnpm ещё
+не включён, выполните `corepack enable` один раз. На macOS FFmpeg можно
+установить через Homebrew:
 
 ```bash
 brew install ffmpeg
@@ -293,20 +294,43 @@ brew install ffmpeg
 
 ```bash
 pnpm install
+python3 -m venv scripts/transcription/.venv
+scripts/transcription/.venv/bin/python -m pip install --upgrade pip
+scripts/transcription/.venv/bin/python -m pip install -r scripts/transcription/requirements.txt
 pnpm dev
 ```
 
-Команда запускает Fastify API на `http://127.0.0.1:3001` и Vite frontend на
-адресе, который напечатает Vite (обычно `http://localhost:5173`). Проекты и
-метаданные сохраняются в `data/studio.sqlite`, исходные видео — в
-`data/projects/{projectId}/source/`. Транскрипт и последующие страницы пока
-остаются демонстрационными.
+Команда применяет миграции и запускает Fastify API на
+`http://127.0.0.1:3001`, один локальный worker и Vite frontend на адресе,
+который напечатает Vite (обычно `http://localhost:5173`). Проекты, jobs и
+сегменты сохраняются в `data/studio.sqlite`, исходные видео — в
+`data/projects/{projectId}/source/`.
+
+По умолчанию worker использует модель `small`. Для быстрой разработки можно
+запустить весь набор с `tiny`:
+
+```bash
+WHISPER_MODEL=tiny pnpm dev
+```
+
+При первом использовании faster-whisper скачивает выбранную модель. Это может
+занять несколько минут и требует доступа к интернету; последующие запуски
+используют локальный кеш. Язык определяется автоматически. Чтобы зафиксировать
+его, задайте, например, `WHISPER_LANGUAGE=ru`. Если виртуальное окружение
+находится в другом месте, передайте полный путь через `WHISPER_PYTHON`.
 
 Сервисы также можно запустить отдельно:
 
 ```bash
 pnpm dev:api
+pnpm dev:worker
 pnpm dev:web
+```
+
+Перед раздельным запуском один раз примените миграции:
+
+```bash
+pnpm --filter @studio/api db:migrate
 ```
 
 Проверки проекта:

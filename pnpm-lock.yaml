@@ -125,6 +125,46 @@ importers:
         specifier: ^7.1.7
         version: 7.3.6(@types/node@24.13.6)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)
 
+  apps/worker:
+    dependencies:
+      '@studio/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      better-sqlite3:
+        specifier: ^12.4.1
+        version: 12.11.1
+      zod:
+        specifier: ^4.1.11
+        version: 4.6.5
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.36.0
+        version: 9.39.5
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
+      '@types/node':
+        specifier: ^24.6.0
+        version: 24.13.6
+      eslint:
+        specifier: ^9.36.0
+        version: 9.39.5(jiti@2.7.0)(supports-color@7.2.0)
+      globals:
+        specifier: ^16.4.0
+        version: 16.5.0
+      tsx:
+        specifier: ^4.20.6
+        version: 4.23.15
+      typescript:
+        specifier: ~5.9.2
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.44.1
+        version: 8.70.1(eslint@9.39.5(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.6)(jiti@2.7.0)(lightningcss@1.32.0)(supports-color@7.2.0)(tsx@4.23.15)
+
   packages/contracts:
     dependencies:
       zod:

@@ -21,6 +21,8 @@ export function useProjectQuery(id: string | undefined) {
     queryKey: projectKeys.detail(id ?? "missing"),
     queryFn: () => getProject(id!),
     enabled: Boolean(id),
+    refetchInterval: (query) =>
+      query.state.data?.status === "transcribing" ? 1000 : false,
   });
 }
 

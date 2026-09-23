@@ -40,6 +40,12 @@ export const statusMeta: Record<
     action: "Открыть проект",
     route: "transcript",
   },
+  ready_for_transcription: {
+    label: "Готов к транскрипции",
+    tone: "violet",
+    action: "Запустить транскрипцию",
+    route: "transcript",
+  },
   transcribing: {
     label: "Транскрипция",
     tone: "blue",

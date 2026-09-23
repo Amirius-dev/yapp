@@ -19,6 +19,7 @@ function toDto(row: ProjectRow): ProjectDto {
     status: row.status,
     sourceFileName: row.sourceFileName,
     sourceMimeType: row.sourceMimeType,
+    language: row.language,
     mediaInfo: hasCompleteMediaInfo
       ? {
           durationSeconds: row.durationSeconds!,
@@ -96,7 +97,7 @@ export function createProjectsRepository(db: StudioDatabase) {
       const [row] = await db
         .update(projects)
         .set({
-          status: "created",
+          status: "ready_for_transcription",
           sourceFilePath: source.relativePath,
           sourceFileName: source.originalName,
           sourceMimeType: source.mimeType,
