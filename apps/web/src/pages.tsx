@@ -1,4 +1,7 @@
 import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   AlertCircle,
   ArrowRight,
   Bot,
@@ -25,14 +28,16 @@ import {
   ShieldCheck,
   Sparkles,
   Subtitles,
+  Trash2,
   Upload,
   WandSparkles,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Button,
-  DemoBadge,
   EmptyState,
   Notice,
   PageTitle,
@@ -50,6 +55,7 @@ import {
 } from "./queries/clips";
 import {
   useCreateProjectMutation,
+  useDeleteProjectMutation,
   useProjectQuery,
   useProjectsQuery,
 } from "./queries/projects";
@@ -64,7 +70,13 @@ import {
 } from "./queries/render";
 import { useStudio } from "./studio-context";
 import type { Project } from "./types";
-import type { ClipDto, ClipsValidationResult } from "@studio/contracts";
+import {
+  clampSubtitlePosition,
+  SUBTITLE_POSITION,
+  subtitleSafeWidthPercent,
+  type ClipDto,
+  type ClipsValidationResult,
+} from "@studio/contracts";
 
 function useProject() {
   const { id } = useParams();
@@ -90,7 +102,7 @@ function MissingProject() {
     <EmptyState
       icon={<FolderOpen />}
       title="Проект не найден"
-      text="Возможно, ссылка устарела или демо-проект был создан в другой сессии."
+      text="Возможно, проект удалён или ссылка устарела."
       action={
         <Link className="button button-primary" to="/projects">
           К проектам
@@ -104,7 +116,7 @@ export function HomePage() {
   return (
     <div className="home-page">
       <section className="hero">
-        <DemoBadge />
+        <span className="mode-tag">Локальное приложение</span>
         <h1>
           Одна длинная запись.
           <br />
@@ -144,7 +156,8 @@ export function HomePage() {
             <h2>С чего начнём?</h2>
           </div>
           <p>
-            Первый режим доступен в демо. Второй появится после завершения MVP.
+            Первый режим полностью локальный. Второй появится после завершения
+            MVP.
           </p>
         </div>
         <div className="mode-grid">
@@ -225,6 +238,20 @@ export function HomePage() {
 
 export function ProjectsPage() {
   const query = useProjectsQuery();
+  const deleteMutation = useDeleteProjectMutation();
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!deleteTarget) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !deleteMutation.isPending)
+        setDeleteTarget(null);
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [deleteMutation.isPending, deleteTarget]);
   const projects = query.data ?? [];
   return (
     <>
@@ -315,12 +342,22 @@ export function ProjectsPage() {
                   minute: "2-digit",
                 }).format(new Date(project.updatedAt))}
               </span>
-              <Link
-                className="row-action"
-                to={`/projects/${project.id}/${meta.route}`}
-              >
-                {meta.action} <ArrowRight />
-              </Link>
+              <div className="project-actions">
+                <Link
+                  className="row-action"
+                  to={`/projects/${project.id}/${meta.route}`}
+                >
+                  {meta.action} <ArrowRight />
+                </Link>
+                <Button
+                  variant="danger"
+                  className="icon-button"
+                  aria-label={`Удалить проект ${project.name}`}
+                  onClick={() => setDeleteTarget(project)}
+                >
+                  <Trash2 />
+                </Button>
+              </div>
             </div>
           );
         })}
@@ -340,6 +377,77 @@ export function ProjectsPage() {
           />
         )}
       </div>
+      {deleteTarget &&
+        createPortal(
+          <div
+            className="dialog-backdrop"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (
+                event.target === event.currentTarget &&
+                !deleteMutation.isPending
+              )
+                setDeleteTarget(null);
+            }}
+          >
+            <div
+              className="confirm-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-title"
+            >
+              <button
+                className="dialog-close"
+                type="button"
+                aria-label="Закрыть окно"
+                disabled={deleteMutation.isPending}
+                onClick={() => setDeleteTarget(null)}
+              >
+                <X />
+              </button>
+              <div className="danger-icon">
+                <Trash2 />
+              </div>
+              <h2 id="delete-title">Удалить «{deleteTarget.name}»?</h2>
+              <p>
+                Исходное видео, транскрипт, клипы и готовые результаты будут
+                удалены без возможности восстановления.
+              </p>
+              {deleteMutation.isError && (
+                <p className="form-error">
+                  <AlertCircle />
+                  {deleteMutation.error.message}
+                </p>
+              )}
+              <div className="dialog-actions">
+                <Button
+                  variant="secondary"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => setDeleteTarget(null)}
+                >
+                  Отмена
+                </Button>
+                <Button
+                  variant="danger"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => {
+                    deleteMutation.mutate(deleteTarget.id, {
+                      onSuccess: () => setDeleteTarget(null),
+                    });
+                  }}
+                >
+                  {deleteMutation.isPending ? (
+                    <LoaderCircle className="spin" />
+                  ) : (
+                    <Trash2 />
+                  )}
+                  Удалить проект
+                </Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
@@ -452,7 +560,7 @@ export function NewProjectPage() {
             <strong>Локальная обработка</strong>
             <p>
               Видео не отправляется в облако. Транскрипцию можно запустить на
-              следующей странице после старта локального worker.
+              следующей странице после запуска фоновой обработки.
             </p>
           </div>
         </Notice>
@@ -492,7 +600,7 @@ export function TranscriptPage() {
 
 function TranscriptWorkspace({ project }: { project: Project }) {
   const jobsQuery = useJobsQuery(project.id);
-  const latestJob = jobsQuery.data?.[0];
+  const latestJob = jobsQuery.data?.find((job) => job.type === "transcription");
   const isProcessing =
     latestJob?.status === "queued" || latestJob?.status === "running";
   const transcriptQuery = useTranscriptQuery(project.id, isProcessing);
@@ -545,7 +653,7 @@ function TranscriptWorkspace({ project }: { project: Project }) {
                 <span>
                   <LoaderCircle className="spin" />
                   {latestJob.status === "queued"
-                    ? "Ожидает worker"
+                    ? "Ожидает обработки"
                     : "Транскрипция на устройстве"}
                 </span>
                 <strong>{latestJob.progress}%</strong>
@@ -564,7 +672,7 @@ function TranscriptWorkspace({ project }: { project: Project }) {
             <EmptyState
               icon={<FileText />}
               title={latestJob ? "Попробуйте ещё раз" : "Транскрипта пока нет"}
-              text="Запустите локальный worker, затем начните транскрипцию. Одновременно обрабатывается одна запись."
+              text="Запустите транскрипцию. Одновременно обрабатывается одна запись."
               action={
                 <Button
                   onClick={() => startMutation.mutate()}
@@ -1090,9 +1198,19 @@ function ClipCard({
     end: clip.end,
     openingCaption: clip.openingCaption,
     enabled: clip.enabled,
+    cropMode: clip.cropMode,
+    cropX: clip.cropX,
+    cropY: clip.cropY,
+    zoom: clip.zoom,
+    subtitleX: clip.subtitleX,
+    subtitleY: clip.subtitleY,
+    subtitleScale: clip.subtitleScale,
+    subtitleAlign: clip.subtitleAlign,
   });
   const updateMutation = useUpdateClipMutation(clip.projectId);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const backgroundVideoRef = useRef<HTMLVideoElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   useEffect(() => {
     setDraft({
@@ -1101,6 +1219,14 @@ function ClipCard({
       end: clip.end,
       openingCaption: clip.openingCaption,
       enabled: clip.enabled,
+      cropMode: clip.cropMode,
+      cropX: clip.cropX,
+      cropY: clip.cropY,
+      zoom: clip.zoom,
+      subtitleX: clip.subtitleX,
+      subtitleY: clip.subtitleY,
+      subtitleScale: clip.subtitleScale,
+      subtitleAlign: clip.subtitleAlign,
     });
   }, [clip]);
   const togglePreview = async () => {
@@ -1111,23 +1237,65 @@ function ClipCard({
       return;
     }
     video.currentTime = draft.start;
+    if (backgroundVideoRef.current)
+      backgroundVideoRef.current.currentTime = draft.start;
     await video.play();
+    if (backgroundVideoRef.current) void backgroundVideoRef.current.play();
     setIsPreviewing(true);
   };
+  const moveSubtitle = (clientX: number, clientY: number) => {
+    const bounds = previewRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const position = clampSubtitlePosition(
+      ((clientX - bounds.left) / bounds.width) * 100,
+      ((clientY - bounds.top) / bounds.height) * 100,
+    );
+    setDraft((current) => ({
+      ...current,
+      subtitleX: Math.round(position.x * 10) / 10,
+      subtitleY: Math.round(position.y * 10) / 10,
+    }));
+  };
+  const subtitleWidth = subtitleSafeWidthPercent(
+    draft.subtitleX,
+    draft.subtitleScale,
+  );
   return (
     <article
       className={draft.enabled ? "clip-card" : "clip-card clip-disabled"}
     >
-      <div className="clip-preview">
+      <div className="clip-preview" ref={previewRef}>
+        {draft.cropMode === "fit" && (
+          <video
+            ref={backgroundVideoRef}
+            className="crop-background"
+            muted
+            playsInline
+            preload="metadata"
+            src={`/api/projects/${encodeURIComponent(clip.projectId)}/source/media`}
+          />
+        )}
         <video
           ref={videoRef}
           preload="metadata"
           src={`/api/projects/${encodeURIComponent(clip.projectId)}/source/media`}
+          playsInline
+          style={{
+            objectFit: draft.cropMode === "fill" ? "cover" : "contain",
+            objectPosition: `${draft.cropX}% ${draft.cropY}%`,
+            transform: `scale(${draft.zoom})`,
+          }}
           onTimeUpdate={(event) => {
             if (event.currentTarget.currentTime >= draft.end) {
               event.currentTarget.pause();
+              backgroundVideoRef.current?.pause();
               setIsPreviewing(false);
             }
+          }}
+          onLoadedMetadata={(event) => {
+            event.currentTarget.currentTime = draft.start;
+            if (backgroundVideoRef.current)
+              backgroundVideoRef.current.currentTime = draft.start;
           }}
           onPause={() => setIsPreviewing(false)}
         />
@@ -1142,6 +1310,58 @@ function ClipCard({
         <span className="preview-duration">
           {formatDuration(draft.end - draft.start)}
         </span>
+        <div className="preview-opening">{draft.openingCaption}</div>
+        <div className="subtitle-safe-area" aria-hidden="true" />
+        <div
+          className="preview-subtitle"
+          role="slider"
+          tabIndex={0}
+          aria-label="Положение субтитров"
+          aria-valuetext={`X ${draft.subtitleX}%, Y ${draft.subtitleY}%`}
+          style={{
+            left: `${draft.subtitleX}%`,
+            top: `${draft.subtitleY}%`,
+            width: `${subtitleWidth}%`,
+            textAlign: draft.subtitleAlign,
+            transform: `translate(-50%, -50%) scale(${draft.subtitleScale})`,
+          }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            moveSubtitle(event.clientX, event.clientY);
+          }}
+          onPointerMove={(event) => {
+            if (event.currentTarget.hasPointerCapture(event.pointerId))
+              moveSubtitle(event.clientX, event.clientY);
+          }}
+          onPointerUp={(event) =>
+            event.currentTarget.releasePointerCapture(event.pointerId)
+          }
+          onKeyDown={(event) => {
+            const step = event.shiftKey ? 5 : 1;
+            const delta = (
+              {
+                ArrowLeft: [-step, 0],
+                ArrowRight: [step, 0],
+                ArrowUp: [0, -step],
+                ArrowDown: [0, step],
+              } as Record<string, [number, number]>
+            )[event.key];
+            if (!delta) return;
+            event.preventDefault();
+            const position = clampSubtitlePosition(
+              draft.subtitleX + delta[0],
+              draft.subtitleY + delta[1],
+            );
+            setDraft((current) => ({
+              ...current,
+              subtitleX: position.x,
+              subtitleY: position.y,
+            }));
+          }}
+        >
+          Пример аккуратной фразы субтитров
+        </div>
       </div>
       <div className="clip-main">
         <div className="clip-topline">
@@ -1228,6 +1448,172 @@ function ClipCard({
           </label>
         </div>
         <small>Длительность: {(draft.end - draft.start).toFixed(1)} сек.</small>
+        <div className="crop-controls">
+          <div className="segmented-control">
+            <button
+              type="button"
+              className={draft.cropMode === "fill" ? "active" : ""}
+              onClick={() =>
+                setDraft((value) => ({ ...value, cropMode: "fill" }))
+              }
+            >
+              Fill
+            </button>
+            <button
+              type="button"
+              className={draft.cropMode === "fit" ? "active" : ""}
+              onClick={() =>
+                setDraft((value) => ({ ...value, cropMode: "fit" }))
+              }
+            >
+              Fit
+            </button>
+          </div>
+          <label>
+            Позиция X <span>{draft.cropX}%</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={draft.cropX}
+              onChange={(event) =>
+                setDraft((value) => ({
+                  ...value,
+                  cropX: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <label>
+            Позиция Y <span>{draft.cropY}%</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={draft.cropY}
+              onChange={(event) =>
+                setDraft((value) => ({
+                  ...value,
+                  cropY: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <label>
+            Масштаб <span>{draft.zoom.toFixed(2)}×</span>
+            <input
+              type="range"
+              min="1"
+              max="1.5"
+              step="0.05"
+              value={draft.zoom}
+              onChange={(event) =>
+                setDraft((value) => ({
+                  ...value,
+                  zoom: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() =>
+              setDraft((value) => ({
+                ...value,
+                cropMode: "fill",
+                cropX: 50,
+                cropY: 50,
+                zoom: 1,
+              }))
+            }
+          >
+            Сбросить кадрирование
+          </Button>
+        </div>
+        <div className="subtitle-controls">
+          <div className="settings-label">
+            Положение субтитров
+            <span>
+              {draft.subtitleX.toFixed(0)} / {draft.subtitleY.toFixed(0)}
+            </span>
+          </div>
+          <div className="subtitle-presets" aria-label="Позиция субтитров">
+            {[
+              ["Top", 28],
+              ["Center", 50],
+              ["Bottom", 72],
+            ].map(([label, y]) => (
+              <button
+                type="button"
+                key={label}
+                className={draft.subtitleY === y ? "active" : ""}
+                onClick={() =>
+                  setDraft((value) => ({
+                    ...value,
+                    subtitleX: 50,
+                    subtitleY: Number(y),
+                  }))
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label>
+            Масштаб текста <span>{draft.subtitleScale.toFixed(2)}×</span>
+            <input
+              type="range"
+              min={SUBTITLE_POSITION.minScale}
+              max={SUBTITLE_POSITION.maxScale}
+              step="0.05"
+              value={draft.subtitleScale}
+              onChange={(event) =>
+                setDraft((value) => ({
+                  ...value,
+                  subtitleScale: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <div className="subtitle-align" aria-label="Выравнивание субтитров">
+            {[
+              ["left", <AlignLeft key="left" />],
+              ["center", <AlignCenter key="center" />],
+              ["right", <AlignRight key="right" />],
+            ].map(([align, icon]) => (
+              <button
+                type="button"
+                key={String(align)}
+                aria-label={`Выравнивание ${align}`}
+                className={draft.subtitleAlign === align ? "active" : ""}
+                onClick={() =>
+                  setDraft((value) => ({
+                    ...value,
+                    subtitleAlign: align as "left" | "center" | "right",
+                  }))
+                }
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() =>
+              setDraft((value) => ({
+                ...value,
+                subtitleX: SUBTITLE_POSITION.defaultX,
+                subtitleY: SUBTITLE_POSITION.defaultY,
+                subtitleScale: SUBTITLE_POSITION.defaultScale,
+                subtitleAlign: "center",
+              }))
+            }
+          >
+            Вернуть положение по умолчанию
+          </Button>
+        </div>
         {updateMutation.isError && (
           <p className="form-error">
             <AlertCircle />
@@ -1266,7 +1652,7 @@ function ClipsWorkspace({ project }: { project: Project }) {
     return (
       <EmptyState
         icon={<AlertCircle />}
-        title="Не удалось получить clips"
+        title="Не удалось получить клипы"
         text={query.error.message}
       />
     );
@@ -1335,7 +1721,7 @@ function ClipsWorkspace({ project }: { project: Project }) {
         <div>
           <strong>Готово к локальному рендеру</strong>
           <p>
-            {enabledCount} clips включено и будет обработано последовательно.
+            {enabledCount} клипов включено и будет обработано последовательно.
           </p>
         </div>
         <Link to={`/projects/${project.id}/render`}>
@@ -1376,7 +1762,7 @@ function RenderWorkspace({ project }: { project: Project }) {
       <PageTitle
         eyebrow="Очередь рендера"
         title="Собираем вертикальные ролики"
-        text="FFmpeg нормализует исходник, затем Remotion собирает MP4 с captions и субтитрами."
+        text="Клипы собираются локально в вертикальные MP4 с выбранным кадрированием и субтитрами."
         action={
           <Button
             onClick={() => start.mutate({})}
@@ -1433,7 +1819,7 @@ function RenderWorkspace({ project }: { project: Project }) {
       <div className="queue panel">
         <div className="panel-heading">
           <h3>Очередь</h3>
-          <span className="small-pill">{enabled.length} clips</span>
+          <span className="small-pill">{enabled.length} клипов</span>
         </div>
         {enabled.map((clip) => {
           const state = clip.renderStatus;
@@ -1471,8 +1857,8 @@ function RenderWorkspace({ project }: { project: Project }) {
         <div>
           <strong>Локальная обработка</strong>
           <p>
-            Одновременно рендерится один clip. Состояние очереди хранится в
-            SQLite.
+            Одновременно собирается один клип. Страницу можно закрыть — прогресс
+            сохранится.
           </p>
         </div>
         <Link to={`/projects/${project.id}/results`}>
@@ -1528,13 +1914,13 @@ function ResultsWorkspace({ project }: { project: Project }) {
         <EmptyState
           icon={<Film />}
           title="Готовых роликов пока нет"
-          text="Запустите локальный рендер или повторите clips, завершившиеся с ошибкой."
+          text="Запустите рендер или повторите клипы, завершившиеся с ошибкой."
           action={
             <Link
               className="button button-secondary"
               to={`/projects/${project.id}/clips`}
             >
-              Вернуться к редактору clips
+              Вернуться к редактору клипов
             </Link>
           }
         />
@@ -1575,7 +1961,7 @@ function ResultsWorkspace({ project }: { project: Project }) {
         <Notice tone="warning">
           <AlertCircle />
           <div>
-            <strong>{failed.length} clips требуют повторной попытки</strong>
+            <strong>{failed.length} клипов требуют повторной попытки</strong>
             <p>
               {failed
                 .map((clip) => clip.renderError)
@@ -1595,7 +1981,7 @@ function ResultsWorkspace({ project }: { project: Project }) {
         </Notice>
       )}
       <Link to={`/projects/${project.id}/clips`}>
-        ← Вернуться к редактору clips
+        ← Вернуться к редактору клипов
       </Link>
       <div className="panel result-summary">
         <div>
@@ -1633,7 +2019,7 @@ export function NotFoundPage() {
     <div className="not-found">
       <span>404</span>
       <h1>Здесь пока ничего нет</h1>
-      <p>Страница не найдена, но ваши демо-проекты на месте.</p>
+      <p>Страница не найдена. Вернитесь на главную или откройте проекты.</p>
       <Link className="button button-primary" to="/">
         Вернуться на главную
       </Link>

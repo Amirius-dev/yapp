@@ -6,7 +6,6 @@ import {
   FolderKanban,
   Home,
   Menu,
-  Sparkles,
   X,
 } from "lucide-react";
 import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
@@ -32,14 +31,6 @@ export function StatusBadge({ status }: { status: ProjectStatus }) {
     <span className={`status status-${meta.tone}`}>
       <span />
       {meta.label}
-    </span>
-  );
-}
-
-export function DemoBadge() {
-  return (
-    <span className="demo-badge">
-      <Sparkles size={13} /> Демо-режим
     </span>
   );
 }
@@ -188,8 +179,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <div className="sidebar-footer">
-          <DemoBadge />
-          <span>Этап 3 · локальная транскрипция</span>
+          <span>Локальный видеомонтаж</span>
         </div>
       </aside>
       {open && (
@@ -207,7 +197,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link to="/" className="mobile-brand">
             <Clapperboard size={20} /> Cutwise
           </Link>
-          <DemoBadge />
+          <span className="local-dot" aria-label="Локальный режим" />
         </header>
         <div className="content" key={location.pathname}>
           {children}

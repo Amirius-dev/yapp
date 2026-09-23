@@ -30,6 +30,14 @@ function toDto(row: ClipRow): ClipDto {
     openingCaption: row.openingCaption,
     segmentIds: segmentIdsSchema.parse(JSON.parse(row.segmentIdsJson)),
     enabled: row.enabled,
+    cropMode: row.cropMode,
+    cropX: row.cropX,
+    cropY: row.cropY,
+    zoom: row.zoom,
+    subtitleX: row.subtitleX,
+    subtitleY: row.subtitleY,
+    subtitleScale: row.subtitleScale,
+    subtitleAlign: row.subtitleAlign,
     renderStatus: row.renderStatus,
     renderProgress: row.renderProgress,
     renderError: row.renderError,
@@ -220,6 +228,16 @@ export function createClipsRepository(db: StudioDatabase) {
           segmentIdsJson = JSON.stringify(intersecting);
         }
 
+        const cropChanged = [
+          patch.cropMode,
+          patch.cropX,
+          patch.cropY,
+          patch.zoom,
+          patch.subtitleX,
+          patch.subtitleY,
+          patch.subtitleScale,
+          patch.subtitleAlign,
+        ].some((value) => value !== undefined);
         const [updated] = tx
           .update(clips)
           .set({
@@ -228,6 +246,33 @@ export function createClipsRepository(db: StudioDatabase) {
               ? {}
               : { openingCaption: patch.openingCaption }),
             ...(patch.enabled === undefined ? {} : { enabled: patch.enabled }),
+            ...(patch.cropMode === undefined
+              ? {}
+              : { cropMode: patch.cropMode }),
+            ...(patch.cropX === undefined ? {} : { cropX: patch.cropX }),
+            ...(patch.cropY === undefined ? {} : { cropY: patch.cropY }),
+            ...(patch.zoom === undefined ? {} : { zoom: patch.zoom }),
+            ...(patch.subtitleX === undefined
+              ? {}
+              : { subtitleX: patch.subtitleX }),
+            ...(patch.subtitleY === undefined
+              ? {}
+              : { subtitleY: patch.subtitleY }),
+            ...(patch.subtitleScale === undefined
+              ? {}
+              : { subtitleScale: patch.subtitleScale }),
+            ...(patch.subtitleAlign === undefined
+              ? {}
+              : { subtitleAlign: patch.subtitleAlign }),
+            ...(cropChanged
+              ? {
+                  renderStatus: "idle" as const,
+                  renderProgress: 0,
+                  renderError: null,
+                  outputFileName: null,
+                  renderedAt: null,
+                }
+              : {}),
             startSeconds: start,
             endSeconds: end,
             segmentIdsJson,
@@ -236,6 +281,12 @@ export function createClipsRepository(db: StudioDatabase) {
           .where(eq(clips.id, clipId))
           .returning()
           .all();
+        if (cropChanged) {
+          tx.update(projects)
+            .set({ status: "reviewing_clips", updatedAt: new Date() })
+            .where(eq(projects.id, projectId))
+            .run();
+        }
         return toDto(updated!);
       });
     },

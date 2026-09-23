@@ -1,7 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { MediaInfo, ProjectDto, ProjectStatus } from "@studio/contracts";
 import type { StudioDatabase } from "../db/client.js";
-import { projects, type ProjectRow } from "../db/schema.js";
+import { jobs, projects, type ProjectRow } from "../db/schema.js";
+import { HttpError } from "../lib/http-error.js";
 
 function toDto(row: ProjectRow): ProjectDto {
   const hasCompleteMediaInfo =
@@ -37,6 +38,32 @@ function toDto(row: ProjectRow): ProjectDto {
 }
 
 export function createProjectsRepository(db: StudioDatabase) {
+  function assertDeletable(id: string) {
+    const [project] = db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, id))
+      .limit(1)
+      .all();
+    if (!project) throw new HttpError(404, "Проект не найден.");
+    const [active] = db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.projectId, id),
+          inArray(jobs.status, ["queued", "running"]),
+        ),
+      )
+      .limit(1)
+      .all();
+    if (active)
+      throw new HttpError(
+        409,
+        "Нельзя удалить проект, пока выполняется транскрипция или рендер.",
+      );
+    return toDto(project);
+  }
   return {
     async create(input: { id: string; name: string }): Promise<ProjectDto> {
       const now = new Date();
@@ -113,6 +140,37 @@ export function createProjectsRepository(db: StudioDatabase) {
         .where(eq(projects.id, id))
         .returning();
       return toDto(row!);
+    },
+
+    assertDeletable,
+
+    delete(id: string) {
+      return db.transaction((tx) => {
+        const [project] = tx
+          .select({ id: projects.id })
+          .from(projects)
+          .where(eq(projects.id, id))
+          .limit(1)
+          .all();
+        if (!project) throw new HttpError(404, "Проект не найден.");
+        const [active] = tx
+          .select({ id: jobs.id })
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.projectId, id),
+              inArray(jobs.status, ["queued", "running"]),
+            ),
+          )
+          .limit(1)
+          .all();
+        if (active)
+          throw new HttpError(
+            409,
+            "Нельзя удалить проект, пока выполняется транскрипция или рендер.",
+          );
+        tx.delete(projects).where(eq(projects.id, id)).run();
+      });
     },
   };
 }

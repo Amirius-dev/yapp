@@ -30,6 +30,10 @@ describe("render repository", () => {
         start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, hook_score INTEGER NOT NULL,
         reason TEXT NOT NULL, opening_caption TEXT NOT NULL, segment_ids_json TEXT NOT NULL,
         enabled INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+        crop_mode TEXT NOT NULL DEFAULT 'fill', crop_x REAL NOT NULL DEFAULT 50,
+        crop_y REAL NOT NULL DEFAULT 50, zoom REAL NOT NULL DEFAULT 1,
+        subtitle_x REAL NOT NULL DEFAULT 50, subtitle_y REAL NOT NULL DEFAULT 72,
+        subtitle_scale REAL NOT NULL DEFAULT 1, subtitle_align TEXT NOT NULL DEFAULT 'center',
         render_status TEXT NOT NULL DEFAULT 'idle', render_progress INTEGER NOT NULL DEFAULT 0,
         render_error TEXT, output_file_name TEXT, rendered_at INTEGER
       );
@@ -86,5 +90,17 @@ describe("render repository", () => {
     expect(() =>
       repository.enqueue(projectId, { clipIds: [clipIds[1]!] }),
     ).toThrow("disabled");
+  });
+
+  it("allows an explicit forced rerender of a completed clip", () => {
+    database.sqlite
+      .prepare("UPDATE clips SET render_status = 'completed' WHERE id = ?")
+      .run(clipIds[0]);
+    const repository = createRenderRepository(database.db);
+    const job = repository.enqueue(projectId, {
+      clipIds: [clipIds[0]!],
+      force: true,
+    });
+    expect(job.status).toBe("queued");
   });
 });

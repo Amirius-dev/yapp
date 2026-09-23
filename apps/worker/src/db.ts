@@ -229,6 +229,14 @@ export type RenderClipData = {
   startSeconds: number;
   endSeconds: number;
   openingCaption: string;
+  cropMode: "fill" | "fit";
+  cropX: number;
+  cropY: number;
+  zoom: number;
+  subtitleX: number;
+  subtitleY: number;
+  subtitleScale: number;
+  subtitleAlign: "left" | "center" | "right";
   segments: Array<{ startSeconds: number; endSeconds: number; text: string }>;
 };
 
@@ -239,7 +247,9 @@ export function getRenderClip(
 ): RenderClipData {
   const clip = db
     .prepare(
-      `SELECT id, start_seconds, end_seconds, opening_caption
+      `SELECT id, start_seconds, end_seconds, opening_caption,
+              crop_mode, crop_x, crop_y, zoom,
+              subtitle_x, subtitle_y, subtitle_scale, subtitle_align
        FROM clips WHERE id = ? AND project_id = ?`,
     )
     .get(clipId, projectId) as
@@ -248,6 +258,14 @@ export function getRenderClip(
         start_seconds: number;
         end_seconds: number;
         opening_caption: string;
+        crop_mode: "fill" | "fit";
+        crop_x: number;
+        crop_y: number;
+        zoom: number;
+        subtitle_x: number;
+        subtitle_y: number;
+        subtitle_scale: number;
+        subtitle_align: "left" | "center" | "right";
       }
     | undefined;
   if (!clip) throw new Error("Clip не найден в render job.");
@@ -267,6 +285,14 @@ export function getRenderClip(
     startSeconds: clip.start_seconds,
     endSeconds: clip.end_seconds,
     openingCaption: clip.opening_caption,
+    cropMode: clip.crop_mode,
+    cropX: clip.crop_x,
+    cropY: clip.crop_y,
+    zoom: clip.zoom,
+    subtitleX: clip.subtitle_x,
+    subtitleY: clip.subtitle_y,
+    subtitleScale: clip.subtitle_scale,
+    subtitleAlign: clip.subtitle_align,
     segments: segments.map((segment) => ({
       startSeconds: segment.start_seconds,
       endSeconds: segment.end_seconds,

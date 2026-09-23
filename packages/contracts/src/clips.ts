@@ -1,5 +1,35 @@
 import { z } from "zod";
 
+export const SUBTITLE_POSITION = {
+  minX: 15,
+  maxX: 85,
+  minY: 18,
+  maxY: 84,
+  defaultX: 50,
+  defaultY: 72,
+  defaultScale: 1,
+  minScale: 0.75,
+  maxScale: 1.5,
+} as const;
+
+export const subtitleAlignSchema = z.enum(["left", "center", "right"]);
+
+export function clampSubtitlePosition(x: number, y: number) {
+  return {
+    x: Math.min(SUBTITLE_POSITION.maxX, Math.max(SUBTITLE_POSITION.minX, x)),
+    y: Math.min(SUBTITLE_POSITION.maxY, Math.max(SUBTITLE_POSITION.minY, y)),
+  };
+}
+
+export function subtitleSafeWidthPercent(x: number, scale: number) {
+  const safeX = clampSubtitlePosition(x, SUBTITLE_POSITION.defaultY).x;
+  const safeScale = Math.min(
+    SUBTITLE_POSITION.maxScale,
+    Math.max(SUBTITLE_POSITION.minScale, scale),
+  );
+  return Math.min(85, 2 * Math.min(safeX - 5, 95 - safeX)) / safeScale;
+}
+
 export const aiPackageRequestSchema = z
   .object({ format: z.enum(["zip", "prompt"]).default("zip") })
   .strict();
@@ -60,6 +90,29 @@ export const clipUpdateSchema = z
     end: z.number().finite().optional(),
     openingCaption: z.string().trim().min(1).max(300).optional(),
     enabled: z.boolean().optional(),
+    cropMode: z.enum(["fill", "fit"]).optional(),
+    cropX: z.number().finite().min(0).max(100).optional(),
+    cropY: z.number().finite().min(0).max(100).optional(),
+    zoom: z.number().finite().min(1).max(1.5).optional(),
+    subtitleX: z
+      .number()
+      .finite()
+      .min(SUBTITLE_POSITION.minX)
+      .max(SUBTITLE_POSITION.maxX)
+      .optional(),
+    subtitleY: z
+      .number()
+      .finite()
+      .min(SUBTITLE_POSITION.minY)
+      .max(SUBTITLE_POSITION.maxY)
+      .optional(),
+    subtitleScale: z
+      .number()
+      .finite()
+      .min(SUBTITLE_POSITION.minScale)
+      .max(SUBTITLE_POSITION.maxScale)
+      .optional(),
+    subtitleAlign: subtitleAlignSchema.optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
@@ -97,6 +150,23 @@ export const clipSchema = z
     openingCaption: z.string(),
     segmentIds: z.array(z.number().int().nonnegative()),
     enabled: z.boolean(),
+    cropMode: z.enum(["fill", "fit"]),
+    cropX: z.number().min(0).max(100),
+    cropY: z.number().min(0).max(100),
+    zoom: z.number().min(1).max(1.5),
+    subtitleX: z
+      .number()
+      .min(SUBTITLE_POSITION.minX)
+      .max(SUBTITLE_POSITION.maxX),
+    subtitleY: z
+      .number()
+      .min(SUBTITLE_POSITION.minY)
+      .max(SUBTITLE_POSITION.maxY),
+    subtitleScale: z
+      .number()
+      .min(SUBTITLE_POSITION.minScale)
+      .max(SUBTITLE_POSITION.maxScale),
+    subtitleAlign: subtitleAlignSchema,
     renderStatus: z.enum([
       "idle",
       "queued",

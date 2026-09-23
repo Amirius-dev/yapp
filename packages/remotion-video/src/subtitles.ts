@@ -7,9 +7,15 @@ export type TimedTranscriptSegment = {
 };
 
 function splitWords(words: string[], maxWords: number) {
+  const partCount = Math.ceil(words.length / maxWords);
+  const baseSize = Math.floor(words.length / partCount);
+  const largerParts = words.length % partCount;
   const parts: string[][] = [];
-  for (let offset = 0; offset < words.length; offset += maxWords) {
-    parts.push(words.slice(offset, offset + maxWords));
+  let offset = 0;
+  for (let index = 0; index < partCount; index += 1) {
+    const size = baseSize + (index < largerParts ? 1 : 0);
+    parts.push(words.slice(offset, offset + size));
+    offset += size;
   }
   return parts;
 }
@@ -18,7 +24,7 @@ export function buildSubtitleCues(
   segments: TimedTranscriptSegment[],
   clipStart: number,
   clipEnd: number,
-  maxWords = 7,
+  maxWords = 6,
 ): SubtitleCue[] {
   const duration = Math.max(0, clipEnd - clipStart);
   if (duration === 0) return [];
@@ -29,7 +35,7 @@ export function buildSubtitleCues(
     if (absoluteEnd <= absoluteStart) continue;
     const words = segment.text.trim().split(/\s+/u).filter(Boolean);
     if (!words.length) continue;
-    const phrases = splitWords(words, Math.max(5, Math.min(8, maxWords)));
+    const phrases = splitWords(words, Math.max(4, Math.min(6, maxWords)));
     let consumed = 0;
     for (const phrase of phrases) {
       const start =

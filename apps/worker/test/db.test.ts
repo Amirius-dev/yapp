@@ -4,6 +4,7 @@ import {
   claimNextJob,
   completeJob,
   finalizeRenderJob,
+  getRenderClip,
   recoverInterruptedJobs,
 } from "../src/db.js";
 
@@ -43,6 +44,17 @@ function createTestDatabase() {
     CREATE TABLE clips (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
+      start_seconds REAL DEFAULT 0,
+      end_seconds REAL DEFAULT 20,
+      opening_caption TEXT DEFAULT '',
+      crop_mode TEXT NOT NULL DEFAULT 'fill',
+      crop_x REAL NOT NULL DEFAULT 50,
+      crop_y REAL NOT NULL DEFAULT 50,
+      zoom REAL NOT NULL DEFAULT 1,
+      subtitle_x REAL NOT NULL DEFAULT 50,
+      subtitle_y REAL NOT NULL DEFAULT 72,
+      subtitle_scale REAL NOT NULL DEFAULT 1,
+      subtitle_align TEXT NOT NULL DEFAULT 'center',
       render_status TEXT NOT NULL DEFAULT 'idle',
       render_progress INTEGER NOT NULL DEFAULT 0,
       render_error TEXT,
@@ -158,6 +170,27 @@ describe("worker persistence", () => {
     expect(result.status).toBe("completed_with_errors");
     expect(db.prepare("SELECT status FROM projects").get()).toEqual({
       status: "reviewing_clips",
+    });
+  });
+
+  it("passes persisted subtitle positioning to the renderer", () => {
+    db.prepare(
+      `INSERT INTO clips
+       (id, project_id, start_seconds, end_seconds, opening_caption,
+        subtitle_x, subtitle_y, subtitle_scale, subtitle_align)
+       VALUES (?, ?, 0, 20, 'Hook', 32, 28, 1.2, 'left')`,
+    ).run("clip-1", "project-1");
+    db.prepare(
+      `INSERT INTO transcript_segments
+       (id, project_id, segment_index, start_seconds, end_seconds, text)
+       VALUES ('segment-1', 'project-1', 0, 0, 10, 'Text')`,
+    ).run();
+
+    expect(getRenderClip(db, "project-1", "clip-1")).toMatchObject({
+      subtitleX: 32,
+      subtitleY: 28,
+      subtitleScale: 1.2,
+      subtitleAlign: "left",
     });
   });
 });

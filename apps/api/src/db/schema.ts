@@ -91,6 +91,20 @@ export const clips = sqliteTable(
     openingCaption: text("opening_caption").notNull(),
     segmentIdsJson: text("segment_ids_json").notNull(),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    cropMode: text("crop_mode")
+      .$type<"fill" | "fit">()
+      .notNull()
+      .default("fill"),
+    cropX: real("crop_x").notNull().default(50),
+    cropY: real("crop_y").notNull().default(50),
+    zoom: real("zoom").notNull().default(1),
+    subtitleX: real("subtitle_x").notNull().default(50),
+    subtitleY: real("subtitle_y").notNull().default(72),
+    subtitleScale: real("subtitle_scale").notNull().default(1),
+    subtitleAlign: text("subtitle_align")
+      .$type<"left" | "center" | "right">()
+      .notNull()
+      .default("center"),
     renderStatus: text("render_status")
       .$type<"idle" | "queued" | "rendering" | "completed" | "failed">()
       .notNull()

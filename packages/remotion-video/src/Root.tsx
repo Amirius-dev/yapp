@@ -7,6 +7,14 @@ const defaults: VerticalClipProps = {
   durationSeconds: 30,
   fps: 30,
   openingCaption: "",
+  cropMode: "fill",
+  cropX: 50,
+  cropY: 50,
+  zoom: 1,
+  subtitleX: 50,
+  subtitleY: 72,
+  subtitleScale: 1,
+  subtitleAlign: "center",
   cues: [],
 };
 

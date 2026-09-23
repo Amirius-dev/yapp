@@ -29,6 +29,20 @@
       "when": 1790153663741,
       "tag": "0003_natural_jasper_sitwell",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790160039892,
+      "tag": "0004_typical_marvel_zombies",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790183260291,
+      "tag": "0005_slimy_marauders",
+      "breakpoints": true
     }
   ]
 }

@@ -16,21 +16,27 @@ export function OpeningCaption({
         position: "absolute",
         left: 70,
         right: 70,
-        top: 190,
+        top: 245,
         textAlign: "center",
       }}
     >
       <span
         style={{
-          color: "white",
-          backgroundColor: "rgba(0,0,0,0.76)",
-          borderRadius: 22,
-          padding: "18px 26px",
+          color: "#ffd166",
+          padding: "12px 24px",
           fontFamily: "Arial, sans-serif",
           fontWeight: 800,
-          fontSize: 64,
-          lineHeight: 1.12,
-          textShadow: "0 3px 14px rgba(0,0,0,0.9)",
+          fontSize: 68,
+          lineHeight: 1.08,
+          maxWidth: 920,
+          margin: "0 auto",
+          display: "-webkit-box",
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+          overflowWrap: "anywhere",
+          textShadow:
+            "-4px -4px 0 #000, 4px -4px 0 #000, -4px 4px 0 #000, 4px 4px 0 #000, 0 6px 18px rgba(0,0,0,0.9)",
         }}
       >
         {text}

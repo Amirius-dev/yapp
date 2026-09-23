@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AiResponse } from "@studio/contracts";
+import {
+  clipUpdateSchema,
+  subtitleSafeWidthPercent,
+  type AiResponse,
+} from "@studio/contracts";
 import { createDatabase } from "../src/db/client.js";
 import { createClipsRepository } from "../src/repositories/clips.js";
 
@@ -44,6 +48,10 @@ describe("clips repository", () => {
         start_seconds REAL NOT NULL, end_seconds REAL NOT NULL, hook_score INTEGER NOT NULL,
         reason TEXT NOT NULL, opening_caption TEXT NOT NULL, segment_ids_json TEXT NOT NULL,
         enabled INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+        crop_mode TEXT NOT NULL DEFAULT 'fill', crop_x REAL NOT NULL DEFAULT 50,
+        crop_y REAL NOT NULL DEFAULT 50, zoom REAL NOT NULL DEFAULT 1,
+        subtitle_x REAL NOT NULL DEFAULT 50, subtitle_y REAL NOT NULL DEFAULT 72,
+        subtitle_scale REAL NOT NULL DEFAULT 1, subtitle_align TEXT NOT NULL DEFAULT 'center',
         render_status TEXT NOT NULL DEFAULT 'idle', render_progress INTEGER NOT NULL DEFAULT 0,
         render_error TEXT, output_file_name TEXT, rendered_at INTEGER
       );
@@ -108,5 +116,69 @@ describe("clips repository", () => {
     expect(() =>
       repository.update(projectId, clip!.id, { start: 80, end: 100 }),
     ).toThrow("не пересекается ни с одним сегментом");
+  });
+
+  it("uses safe crop defaults and validates persisted crop settings", async () => {
+    const repository = createClipsRepository(database.db);
+    const [clip] = repository.import(projectId, response(1));
+    expect(clip).toMatchObject({
+      cropMode: "fill",
+      cropX: 50,
+      cropY: 50,
+      zoom: 1,
+      subtitleX: 50,
+      subtitleY: 72,
+      subtitleScale: 1,
+      subtitleAlign: "center",
+    });
+    database.sqlite
+      .prepare(
+        "UPDATE clips SET render_status = 'completed', output_file_name = 'old.mp4' WHERE id = ?",
+      )
+      .run(clip!.id);
+    const updated = repository.update(projectId, clip!.id, {
+      cropMode: "fit",
+      cropX: 15,
+      cropY: 80,
+      zoom: 1.25,
+    });
+    expect(updated).toMatchObject({
+      cropMode: "fit",
+      cropX: 15,
+      cropY: 80,
+      zoom: 1.25,
+      renderStatus: "idle",
+      outputFileName: null,
+    });
+  });
+
+  it("validates and persists subtitle safe-zone settings", () => {
+    expect(
+      clipUpdateSchema.safeParse({ subtitleX: 14, subtitleY: 72 }).success,
+    ).toBe(false);
+    expect(
+      clipUpdateSchema.safeParse({ subtitleX: 50, subtitleY: 85 }).success,
+    ).toBe(false);
+    expect(clipUpdateSchema.safeParse({ subtitleScale: 1.51 }).success).toBe(
+      false,
+    );
+    expect(subtitleSafeWidthPercent(15, 1.5) * 1.5).toBe(20);
+    expect(subtitleSafeWidthPercent(50, 1)).toBe(85);
+
+    const repository = createClipsRepository(database.db);
+    const [clip] = repository.import(projectId, response(1));
+    const updated = repository.update(projectId, clip!.id, {
+      subtitleX: 35,
+      subtitleY: 28,
+      subtitleScale: 1.2,
+      subtitleAlign: "left",
+    });
+    expect(updated).toMatchObject({
+      subtitleX: 35,
+      subtitleY: 28,
+      subtitleScale: 1.2,
+      subtitleAlign: "left",
+      renderStatus: "idle",
+    });
   });
 });

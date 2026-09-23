@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CreateProjectInput } from "@studio/contracts";
 import {
   createProject,
+  deleteProject,
   getProject,
   listProjects,
   uploadProjectSource,
@@ -41,6 +42,17 @@ export function useCreateProjectMutation() {
     },
     onSuccess: (project) => {
       queryClient.setQueryData(projectKeys.detail(project.id), project);
+      void queryClient.invalidateQueries({ queryKey: projectKeys.all });
+    },
+  });
+}
+
+export function useDeleteProjectMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deleteProject,
+    onSuccess: (_result, id) => {
+      queryClient.removeQueries({ queryKey: projectKeys.detail(id) });
       void queryClient.invalidateQueries({ queryKey: projectKeys.all });
     },
   });

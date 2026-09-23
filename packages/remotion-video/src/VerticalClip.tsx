@@ -18,11 +18,21 @@ export function VerticalClip(props: VerticalClipProps) {
   );
   return (
     <AbsoluteFill>
-      <VideoLayers videoFileName={props.videoFileName} />
+      <VideoLayers
+        videoFileName={props.videoFileName}
+        cropMode={props.cropMode}
+        cropX={props.cropX}
+        cropY={props.cropY}
+        zoom={props.zoom}
+      />
       <OpeningCaption text={props.openingCaption} hidden={hideOpening} />
       <Subtitles
         cues={props.cues}
         hiddenUntil={!hideOpening && props.openingCaption.trim() ? 3 : 0}
+        x={props.subtitleX}
+        y={props.subtitleY}
+        scale={props.subtitleScale}
+        align={props.subtitleAlign}
       />
     </AbsoluteFill>
   );

@@ -8,6 +8,7 @@ import { ffprobePath } from "../config.js";
 import { HttpError } from "../lib/http-error.js";
 import type { ProjectsRepository } from "../repositories/projects.js";
 import { probeVideo } from "../services/ffprobe.js";
+import { deleteProjectSafely } from "../services/project-deletion.js";
 import {
   prepareSourceDestination,
   validateVideoUpload,
@@ -55,6 +56,12 @@ export async function registerProjectRoutes(
     const project = await repository.findById(id);
     if (!project) throw new HttpError(404, "Проект не найден.");
     return project;
+  });
+
+  app.delete("/api/projects/:id", async (request, reply) => {
+    const id = parseProjectId(request.params);
+    await deleteProjectSafely(id, repository);
+    return reply.status(204).send();
   });
 
   app.post("/api/projects/:id/source", async (request, reply) => {

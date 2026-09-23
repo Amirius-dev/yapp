@@ -58,3 +58,11 @@ export async function uploadProjectSource(
   );
   return readResponse(response, (body) => projectSchema.parse(body));
 }
+
+export async function deleteProject(id: string): Promise<void> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (response.status === 204) return;
+  await readResponse(response, () => undefined);
+}
