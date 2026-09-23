@@ -5,64 +5,71 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { demoTranscript, initialProjects } from "./mock-data";
+import type { ProjectDto, ProjectStatus } from "@studio/contracts";
+import { demoClips, demoTranscript } from "./mock-data";
 import type { Clip, Project } from "./types";
 
-type NewProject = { name: string; fileName: string; durationSeconds: number };
+type ProjectOverrides = { status?: ProjectStatus; clips?: Clip[] };
 type StudioContextValue = {
-  projects: Project[];
-  addProject: (input: NewProject) => Project;
+  decorateProject: (project: ProjectDto) => Project;
   updateClip: (projectId: string, clipId: string, patch: Partial<Clip>) => void;
-  updateStatus: (projectId: string, status: Project["status"]) => void;
+  updateStatus: (projectId: string, status: ProjectStatus) => void;
 };
 
 const StudioContext = createContext<StudioContextValue | null>(null);
 
+function formatUpdatedAt(value: string) {
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export function StudioProvider({ children }: { children: ReactNode }) {
-  const [projects, setProjects] = useState(initialProjects);
+  const [overrides, setOverrides] = useState<Record<string, ProjectOverrides>>(
+    {},
+  );
 
   const value = useMemo<StudioContextValue>(
     () => ({
-      projects,
-      addProject: ({ name, fileName, durationSeconds }) => {
-        const project: Project = {
-          id: `demo-${Date.now()}`,
-          name,
-          sourceName: fileName,
-          durationSeconds,
-          language: "Определяется",
-          updatedAt: "Только что",
-          status: "transcribing",
-          progress: 42,
+      decorateProject: (project) => {
+        const local = overrides[project.id];
+        return {
+          id: project.id,
+          name: project.name,
+          status: local?.status ?? project.status,
+          durationSeconds: project.mediaInfo?.durationSeconds ?? 0,
+          language: "Не определён",
+          updatedAt: formatUpdatedAt(project.updatedAt),
+          sourceName: project.sourceFileName ?? "Видео ещё не загружено",
+          errorMessage: project.errorMessage ?? undefined,
+          mediaInfo: project.mediaInfo,
           transcript: demoTranscript,
-          clips: [],
+          clips: local?.clips ?? demoClips,
         };
-        setProjects((current) => [project, ...current]);
-        return project;
       },
       updateClip: (projectId, clipId, patch) =>
-        setProjects((current) =>
-          current.map((project) =>
-            project.id === projectId
-              ? {
-                  ...project,
-                  clips: project.clips.map((clip) =>
-                    clip.id === clipId ? { ...clip, ...patch } : clip,
-                  ),
-                }
-              : project,
-          ),
-        ),
+        setOverrides((current) => {
+          const clips = current[projectId]?.clips ?? demoClips;
+          return {
+            ...current,
+            [projectId]: {
+              ...current[projectId],
+              clips: clips.map((clip) =>
+                clip.id === clipId ? { ...clip, ...patch } : clip,
+              ),
+            },
+          };
+        }),
       updateStatus: (projectId, status) =>
-        setProjects((current) =>
-          current.map((project) =>
-            project.id === projectId
-              ? { ...project, status, updatedAt: "Только что" }
-              : project,
-          ),
-        ),
+        setOverrides((current) => ({
+          ...current,
+          [projectId]: { ...current[projectId], status },
+        })),
     }),
-    [projects],
+    [overrides],
   );
 
   return (

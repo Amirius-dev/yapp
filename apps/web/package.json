@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build"
   },
   "dependencies": {
+    "@studio/contracts": "workspace:*",
     "@tanstack/react-query": "^5.90.2",
     "lucide-react": "^0.544.0",
     "react": "^19.1.1",

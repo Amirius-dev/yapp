@@ -12,10 +12,34 @@ export function formatDuration(seconds: number) {
     : [minutes, secs].map((value) => String(value).padStart(2, "0")).join(":");
 }
 
+export function formatFileSize(bytes: number) {
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} КБ`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} МБ`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} ГБ`;
+}
+
 export const statusMeta: Record<
   ProjectStatus,
   { label: string; tone: string; action: string; route: string }
 > = {
+  created: {
+    label: "Медиа готово",
+    tone: "green",
+    action: "Открыть проект",
+    route: "transcript",
+  },
+  uploading: {
+    label: "Загрузка",
+    tone: "blue",
+    action: "Открыть проект",
+    route: "transcript",
+  },
+  probing: {
+    label: "Анализ медиа",
+    tone: "violet",
+    action: "Открыть проект",
+    route: "transcript",
+  },
   transcribing: {
     label: "Транскрипция",
     tone: "blue",

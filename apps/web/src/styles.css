@@ -951,6 +951,9 @@ a {
   color: white;
   background: #59a88e;
 }
+.stepper + .notice {
+  margin-bottom: 18px;
+}
 .panel {
   padding: 22px;
 }

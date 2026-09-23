@@ -1,11 +1,6 @@
-export type ProjectStatus =
-  | "transcribing"
-  | "ready_for_ai"
-  | "waiting_for_ai_result"
-  | "reviewing_clips"
-  | "rendering"
-  | "completed"
-  | "failed";
+import type { MediaInfo, ProjectStatus } from "@studio/contracts";
+
+export type { ProjectStatus } from "@studio/contracts";
 
 export type TranscriptSegment = {
   id: number;
@@ -37,6 +32,7 @@ export type Project = {
   sourceName: string;
   progress?: number;
   errorMessage?: string;
+  mediaInfo: MediaInfo | null;
   transcript: TranscriptSegment[];
   clips: Clip[];
 };

@@ -281,19 +281,33 @@ GET    /api/projects/:id/jobs
 GET    /api/projects/:id/results
 ```
 
-## Запуск интерфейса Этапа 1
+## Локальный запуск после Этапа 2
 
-Требования: Node.js 20+ и pnpm. Если pnpm ещё не включён, выполните
-`corepack enable` один раз.
+Требования: Node.js 20+, pnpm и FFmpeg с `ffprobe`. Если pnpm ещё не включён,
+выполните `corepack enable` один раз. На macOS FFmpeg можно установить через
+Homebrew:
+
+```bash
+brew install ffmpeg
+```
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-После запуска откройте адрес, который напечатает Vite (обычно
-`http://localhost:5173`). Интерфейс работает на моковых данных: выбранный файл
-не загружается и созданные проекты сбрасываются после обновления страницы.
+Команда запускает Fastify API на `http://127.0.0.1:3001` и Vite frontend на
+адресе, который напечатает Vite (обычно `http://localhost:5173`). Проекты и
+метаданные сохраняются в `data/studio.sqlite`, исходные видео — в
+`data/projects/{projectId}/source/`. Транскрипт и последующие страницы пока
+остаются демонстрационными.
+
+Сервисы также можно запустить отдельно:
+
+```bash
+pnpm dev:api
+pnpm dev:web
+```
 
 Проверки проекта:
 
@@ -301,6 +315,7 @@ pnpm dev
 pnpm format:check
 pnpm lint
 pnpm typecheck
+pnpm test
 pnpm build
 ```
 

@@ -1,4 +1,4 @@
-import type { Clip, Project, TranscriptSegment } from "./types";
+import type { Clip, TranscriptSegment } from "./types";
 
 export const demoTranscript: TranscriptSegment[] = [
   {
@@ -81,42 +81,5 @@ export const demoClips: Clip[] = [
     segmentIds: [83, 84],
     enabled: false,
     renderStatus: "queued",
-  },
-];
-
-export const initialProjects: Project[] = [
-  {
-    id: "focus-not-motivation",
-    name: "Фокус вместо мотивации",
-    status: "reviewing_clips",
-    durationSeconds: 1284,
-    language: "Русский",
-    updatedAt: "Сегодня, 18:42",
-    sourceName: "focus-interview.mp4",
-    transcript: demoTranscript,
-    clips: demoClips,
-  },
-  {
-    id: "creative-routine",
-    name: "Как выстроить творческую рутину",
-    status: "transcribing",
-    durationSeconds: 2847,
-    language: "Русский",
-    updatedAt: "Сегодня, 17:10",
-    sourceName: "creative-routine.mov",
-    progress: 68,
-    transcript: demoTranscript.slice(0, 4),
-    clips: [],
-  },
-  {
-    id: "product-talk",
-    name: "Продуктовый разговор — выпуск 12",
-    status: "completed",
-    durationSeconds: 3642,
-    language: "Русский",
-    updatedAt: "Вчера, 21:05",
-    sourceName: "product-talk-12.mp4",
-    transcript: demoTranscript,
-    clips: demoClips.map((clip) => ({ ...clip, renderStatus: "completed" })),
   },
 ];

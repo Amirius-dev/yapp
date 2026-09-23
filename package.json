@@ -3,12 +3,15 @@
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "scripts": {
-    "dev": "pnpm --filter @studio/web dev",
+    "dev": "corepack pnpm --parallel --filter @studio/api --filter @studio/web dev",
+    "dev:web": "corepack pnpm --filter @studio/web dev",
+    "dev:api": "corepack pnpm --filter @studio/api dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "pnpm --filter @studio/web lint",
-    "typecheck": "pnpm --filter @studio/web typecheck",
-    "build": "pnpm --filter @studio/web build"
+    "lint": "corepack pnpm --recursive lint",
+    "typecheck": "corepack pnpm --recursive typecheck",
+    "test": "corepack pnpm --filter @studio/api test",
+    "build": "corepack pnpm --filter @studio/web build"
   },
   "devDependencies": {
     "prettier": "^3.6.2"

@@ -40,14 +40,33 @@ import {
   ProjectHeader,
   StatusBadge,
 } from "./components";
-import { formatDuration, statusMeta } from "./lib";
+import { formatDuration, formatFileSize, statusMeta } from "./lib";
 import { demoClips } from "./mock-data";
+import {
+  useCreateProjectMutation,
+  useProjectQuery,
+  useProjectsQuery,
+} from "./queries/projects";
 import { useStudio } from "./studio-context";
 import type { Clip, Project } from "./types";
 
 function useProject() {
   const { id } = useParams();
-  return useStudio().projects.find((project) => project.id === id);
+  const query = useProjectQuery(id);
+  const { decorateProject } = useStudio();
+  if (query.isPending) return undefined;
+  if (!query.data) return null;
+  return decorateProject(query.data);
+}
+
+function ProjectLoading() {
+  return (
+    <EmptyState
+      icon={<LoaderCircle className="spin" />}
+      title="Загружаем проект"
+      text="Получаем актуальные данные из локального backend."
+    />
+  );
 }
 
 function MissingProject() {
@@ -189,7 +208,8 @@ export function HomePage() {
 }
 
 export function ProjectsPage() {
-  const { projects } = useStudio();
+  const query = useProjectsQuery();
+  const projects = query.data ?? [];
   return (
     <>
       <PageTitle
@@ -202,6 +222,15 @@ export function ProjectsPage() {
           </Link>
         }
       />
+      {query.isError && (
+        <Notice tone="error">
+          <AlertCircle />
+          <div>
+            <strong>Не удалось получить проекты</strong>
+            <p>{query.error.message}</p>
+          </div>
+        </Notice>
+      )}
       <div className="summary-grid">
         <div>
           <Film />
@@ -250,14 +279,26 @@ export function ProjectsPage() {
                 </div>
                 <span>
                   <strong>{project.name}</strong>
-                  <small>{project.sourceName}</small>
+                  <small>
+                    {project.sourceFileName ?? "Видео ещё не загружено"}
+                  </small>
                 </span>
               </div>
               <span className="muted-text">
-                <Clock3 size={15} /> {formatDuration(project.durationSeconds)}
+                <Clock3 size={15} />{" "}
+                {project.mediaInfo
+                  ? formatDuration(project.mediaInfo.durationSeconds)
+                  : "—"}
               </span>
               <StatusBadge status={project.status} />
-              <span className="muted-text">{project.updatedAt}</span>
+              <span className="muted-text">
+                {new Intl.DateTimeFormat("ru-RU", {
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }).format(new Date(project.updatedAt))}
+              </span>
               <Link
                 className="row-action"
                 to={`/projects/${project.id}/${meta.route}`}
@@ -267,6 +308,21 @@ export function ProjectsPage() {
             </div>
           );
         })}
+        {!query.isPending && !query.isError && projects.length === 0 && (
+          <EmptyState
+            icon={<FolderOpen />}
+            title="Проектов пока нет"
+            text="Создайте первый проект и добавьте короткое тестовое видео."
+            action={
+              <Link
+                className="button button-primary"
+                to="/projects/new/long-video"
+              >
+                Создать проект
+              </Link>
+            }
+          />
+        )}
       </div>
     </>
   );
@@ -278,18 +334,26 @@ export function NewProjectPage() {
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
-  const { addProject } = useStudio();
+  const createMutation = useCreateProjectMutation();
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     if (!name.trim()) return setError("Добавьте понятное название проекта.");
-    if (!file) return setError("Выберите видеофайл для демо-проекта.");
-    const project = addProject({
-      name: name.trim(),
-      fileName: file.name,
-      durationSeconds: 1284,
-    });
-    navigate(`/projects/${project.id}/transcript`);
+    if (!file) return setError("Выберите исходный видеофайл.");
+    setError("");
+    try {
+      const project = await createMutation.mutateAsync({
+        input: { name: name.trim(), mode: "long_video_to_shorts" },
+        file,
+      });
+      navigate(`/projects/${project.id}/transcript`);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Не удалось создать проект или загрузить видео.",
+      );
+    }
   }
 
   return (
@@ -297,7 +361,7 @@ export function NewProjectPage() {
       <PageTitle
         eyebrow="Новый проект"
         title="Добавьте длинное видео"
-        text="На этом этапе файл используется только для демонстрации интерфейса и никуда не отправляется."
+        text="Файл сохранится только в локальной папке проекта, после чего ffprobe прочитает его метаданные."
       />
       <div className="wizard-steps">
         <span className="active">
@@ -331,7 +395,7 @@ export function NewProjectPage() {
             ref={inputRef}
             className="sr-only"
             type="file"
-            accept="video/*"
+            accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mkv"
             onChange={(e) => {
               setFile(e.target.files?.[0] ?? null);
               setError("");
@@ -369,10 +433,10 @@ export function NewProjectPage() {
         <Notice>
           <Sparkles size={18} />
           <div>
-            <strong>Демонстрационный запуск</strong>
+            <strong>Локальная обработка</strong>
             <p>
-              Мы покажем готовый моковый транскрипт. FFmpeg и Whisper будут
-              подключены на следующих этапах.
+              Видео не отправляется в облако. Транскрипт на следующей странице
+              пока останется демонстрационным до Этапа 3.
             </p>
           </div>
         </Notice>
@@ -386,8 +450,16 @@ export function NewProjectPage() {
           <Link className="button button-ghost" to="/projects">
             Отмена
           </Link>
-          <Button type="submit">
-            Создать проект <ArrowRight size={18} />
+          <Button type="submit" disabled={createMutation.isPending}>
+            {createMutation.isPending ? (
+              <>
+                <LoaderCircle className="spin" /> Загружаем и анализируем
+              </>
+            ) : (
+              <>
+                Создать проект <ArrowRight size={18} />
+              </>
+            )}
           </Button>
         </div>
       </form>
@@ -397,11 +469,22 @@ export function NewProjectPage() {
 
 export function TranscriptPage() {
   const project = useProject();
+  if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
   const isProcessing = project.status === "transcribing";
   return (
     <>
       <ProjectHeader project={project} active="transcript" />
+      <Notice>
+        <Sparkles />
+        <div>
+          <strong>Метаданные получены через ffprobe</strong>
+          <p>
+            Транскрипт ниже пока демонстрационный. Локальная транскрипция будет
+            подключена на Этапе 3.
+          </p>
+        </div>
+      </Notice>
       <div className="workspace-grid">
         <section className="panel transcript-panel">
           <div className="panel-heading">
@@ -464,6 +547,36 @@ export function TranscriptPage() {
                 </dt>
                 <dd>{project.transcript.length}</dd>
               </div>
+              {project.mediaInfo && (
+                <>
+                  <div>
+                    <dt>
+                      <MonitorPlay /> Разрешение
+                    </dt>
+                    <dd>
+                      {project.mediaInfo.width} × {project.mediaInfo.height}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>
+                      <Gauge /> FPS
+                    </dt>
+                    <dd>{project.mediaInfo.fps.toFixed(2)}</dd>
+                  </div>
+                  <div>
+                    <dt>
+                      <FileArchive /> Размер
+                    </dt>
+                    <dd>{formatFileSize(project.mediaInfo.fileSizeBytes)}</dd>
+                  </div>
+                  <div>
+                    <dt>
+                      <Film /> Аудио
+                    </dt>
+                    <dd>{project.mediaInfo.hasAudio ? "Есть" : "Нет"}</dd>
+                  </div>
+                </>
+              )}
             </dl>
           </div>
           <div className="panel next-card">
@@ -521,6 +634,7 @@ export function AiExportPage() {
   const [selected, setSelected] = useState("chatgpt");
   const [copied, setCopied] = useState(false);
   const { updateStatus } = useStudio();
+  if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
   const provider = providers.find((item) => item.id === selected)!;
   return (
@@ -655,6 +769,7 @@ export function AiImportPage() {
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const { updateStatus } = useStudio();
+  if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
   const projectId = project.id;
   function validate() {
@@ -860,6 +975,7 @@ function ClipCard({
 export function ClipsPage() {
   const project = useProject();
   const { updateStatus } = useStudio();
+  if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
   const clips = project.clips.length ? project.clips : demoClips;
   const enabledCount = clips.filter((clip) => clip.enabled).length;
@@ -930,6 +1046,7 @@ export function ClipsPage() {
 
 export function RenderPage() {
   const project = useProject();
+  if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
   const clips = (project.clips.length ? project.clips : demoClips).filter(
     (clip) => clip.enabled,
@@ -1015,6 +1132,7 @@ export function RenderPage() {
 export function ResultsPage() {
   const project = useProject();
   const { updateStatus } = useStudio();
+  if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
   const clips = (project.clips.length ? project.clips : demoClips).filter(
     (clip) => clip.enabled,
