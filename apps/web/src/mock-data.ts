@@ -1,0 +1,122 @@
+import type { Clip, Project, TranscriptSegment } from "./types";
+
+export const demoTranscript: TranscriptSegment[] = [
+  {
+    id: 81,
+    start: 542.5,
+    end: 550.2,
+    text: "Большинство людей сдаются не потому, что у них не получается.",
+  },
+  {
+    id: 82,
+    start: 550.2,
+    end: 562.8,
+    text: "Они просто не видят прогресса, который накапливается незаметно.",
+  },
+  {
+    id: 83,
+    start: 562.8,
+    end: 576.4,
+    text: "Результат часто появляется сразу после самого сложного отрезка пути.",
+  },
+  {
+    id: 84,
+    start: 576.4,
+    end: 589.2,
+    text: "Поэтому хороший план важнее очередного всплеска мотивации.",
+  },
+  {
+    id: 109,
+    start: 718.1,
+    end: 729.5,
+    text: "Есть простой способ отличить цель от красивой фантазии.",
+  },
+  {
+    id: 110,
+    start: 729.5,
+    end: 744.8,
+    text: "Спросите себя, какое повторяемое действие вы готовы делать каждую неделю.",
+  },
+  {
+    id: 111,
+    start: 744.8,
+    end: 760.7,
+    text: "Если ответа нет, у вас пока есть желание, но ещё нет системы.",
+  },
+];
+
+export const demoClips: Clip[] = [
+  {
+    id: "clip-1",
+    title: "Почему большинство сдаётся слишком рано",
+    start: 542.5,
+    end: 589.2,
+    hookScore: 9,
+    reason: "Сильное утверждение и законченный практический вывод.",
+    openingCaption: "Ты сдаёшься прямо перед результатом",
+    segmentIds: [81, 82, 83, 84],
+    enabled: true,
+    renderStatus: "completed",
+  },
+  {
+    id: "clip-2",
+    title: "Цель или просто красивая фантазия?",
+    start: 718.1,
+    end: 760.7,
+    hookScore: 8,
+    reason: "Простой тест, который зритель может применить сразу.",
+    openingCaption: "Это цель или просто желание?",
+    segmentIds: [109, 110, 111],
+    enabled: true,
+    renderStatus: "rendering",
+  },
+  {
+    id: "clip-3",
+    title: "Система сильнее мотивации",
+    start: 566.4,
+    end: 603.8,
+    hookScore: 7,
+    reason: "Короткий тезис с ясным выводом.",
+    openingCaption: "Мотивация не спасёт твой план",
+    segmentIds: [83, 84],
+    enabled: false,
+    renderStatus: "queued",
+  },
+];
+
+export const initialProjects: Project[] = [
+  {
+    id: "focus-not-motivation",
+    name: "Фокус вместо мотивации",
+    status: "reviewing_clips",
+    durationSeconds: 1284,
+    language: "Русский",
+    updatedAt: "Сегодня, 18:42",
+    sourceName: "focus-interview.mp4",
+    transcript: demoTranscript,
+    clips: demoClips,
+  },
+  {
+    id: "creative-routine",
+    name: "Как выстроить творческую рутину",
+    status: "transcribing",
+    durationSeconds: 2847,
+    language: "Русский",
+    updatedAt: "Сегодня, 17:10",
+    sourceName: "creative-routine.mov",
+    progress: 68,
+    transcript: demoTranscript.slice(0, 4),
+    clips: [],
+  },
+  {
+    id: "product-talk",
+    name: "Продуктовый разговор — выпуск 12",
+    status: "completed",
+    durationSeconds: 3642,
+    language: "Русский",
+    updatedAt: "Вчера, 21:05",
+    sourceName: "product-talk-12.mp4",
+    transcript: demoTranscript,
+    clips: demoClips.map((clip) => ({ ...clip, renderStatus: "completed" })),
+  },
+];

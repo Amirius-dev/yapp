@@ -1,0 +1,16 @@
+{
+  "name": "youtube-video-studio",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "dev": "pnpm --filter @studio/web dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "pnpm --filter @studio/web lint",
+    "typecheck": "pnpm --filter @studio/web typecheck",
+    "build": "pnpm --filter @studio/web build"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2"
+  }
+}
