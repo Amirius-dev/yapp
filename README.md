@@ -274,6 +274,7 @@ POST   /api/projects/:id/source
 POST   /api/projects/:id/transcription
 GET    /api/projects/:id/transcript
 POST   /api/projects/:id/ai-package
+POST   /api/projects/:id/clips/validate
 POST   /api/projects/:id/clips/import
 GET    /api/projects/:id/clips
 PATCH  /api/projects/:id/clips/:clipId
@@ -282,7 +283,7 @@ GET    /api/projects/:id/jobs
 GET    /api/projects/:id/results
 ```
 
-## Локальный запуск после Этапа 3
+## Локальный запуск после Этапа 4
 
 Требования: Node.js 20+, pnpm, Python 3.9+ и FFmpeg с `ffprobe`. Если pnpm ещё
 не включён, выполните `corepack enable` один раз. На macOS FFmpeg можно
@@ -305,6 +306,12 @@ pnpm dev
 который напечатает Vite (обычно `http://localhost:5173`). Проекты, jobs и
 сегменты сохраняются в `data/studio.sqlite`, исходные видео — в
 `data/projects/{projectId}/source/`.
+
+После транскрипции страница ручного AI-моста создаёт ZIP с настоящим
+транскриптом, промптом, JSON Schema и контекстом проекта. Пользователь вручную
+передаёт пакет выбранному AI, вставляет полученный JSON, проверяет preview и
+явно подтверждает импорт. Предложения и правки редактора clips сохраняются в
+SQLite. Никакие AI API или CLI-агенты не вызываются.
 
 По умолчанию worker использует модель `small`. Для быстрой разработки можно
 запустить весь набор с `tiny`:

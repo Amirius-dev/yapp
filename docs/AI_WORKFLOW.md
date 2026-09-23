@@ -25,6 +25,10 @@ transcript-part-002.json
 
 Every part repeats the original absolute timestamps. Never reset time to zero for each part.
 
+The public numeric `id` of an exported transcript segment is its stable
+`segmentIndex`. AI responses must copy these numeric IDs into `segmentIds`;
+internal SQLite UUIDs are never exposed in the package.
+
 ## Prompt template
 
 ```text
@@ -68,6 +72,12 @@ Validation rules:
 - referenced segment IDs exist;
 - overlapping clips receive a warning;
 - identical ranges are rejected.
+
+A result with fewer than 10 or more than 20 clips receives a warning but may
+still be imported. An empty list remains invalid. Validation and import are
+separate actions, and import repeats all checks before atomically replacing the
+previous suggestions. When an editor changes a clip range, the backend
+recalculates `segmentIds` from transcript segments intersecting that range.
 
 ## Provider presets
 

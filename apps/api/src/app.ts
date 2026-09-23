@@ -6,6 +6,8 @@ import { createDatabase } from "./db/client.js";
 import { HttpError } from "./lib/http-error.js";
 import { createProjectsRepository } from "./repositories/projects.js";
 import { createTranscriptionRepository } from "./repositories/transcription.js";
+import { createClipsRepository } from "./repositories/clips.js";
+import { registerClipRoutes } from "./routes/clips.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerTranscriptionRoutes } from "./routes/transcription.js";
 
@@ -17,12 +19,14 @@ export async function buildApp() {
     db,
     whisperModel,
   );
+  const clipsRepository = createClipsRepository(db);
 
   await app.register(multipart, {
     limits: { files: 1, fields: 0, fileSize: maxUploadBytes },
   });
   await registerProjectRoutes(app, { repository });
   await registerTranscriptionRoutes(app, transcriptionRepository);
+  await registerClipRoutes(app, clipsRepository);
 
   app.get("/api/health", async () => ({ status: "ok" }));
 

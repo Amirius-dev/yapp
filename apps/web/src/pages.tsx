@@ -43,6 +43,14 @@ import {
 import { formatDuration, formatFileSize, statusMeta } from "./lib";
 import { demoClips } from "./mock-data";
 import {
+  useAiPromptQuery,
+  useClipsQuery,
+  useDownloadAiPackageMutation,
+  useImportClipsMutation,
+  useUpdateClipMutation,
+  useValidateClipsMutation,
+} from "./queries/clips";
+import {
   useCreateProjectMutation,
   useProjectQuery,
   useProjectsQuery,
@@ -53,7 +61,8 @@ import {
   useTranscriptQuery,
 } from "./queries/transcription";
 import { useStudio } from "./studio-context";
-import type { Clip, Project } from "./types";
+import type { Project } from "./types";
+import type { ClipDto, ClipsValidationResult } from "@studio/contracts";
 
 function useProject() {
   const { id } = useParams();
@@ -688,35 +697,62 @@ const providers = [
     name: "ChatGPT",
     mark: "◎",
     hint: "Прикрепите пакет в новом чате и отправьте подготовленный промпт.",
+    url: "https://chatgpt.com/",
   },
   {
     id: "claude",
     name: "Claude",
     mark: "C",
     hint: "Используйте те же файлы и попросите вернуть только JSON.",
+    url: "https://claude.ai/new",
   },
   {
     id: "gemini",
     name: "Gemini",
     mark: "✦",
     hint: "Добавьте транскрипт и схему ответа в новый диалог.",
+    url: "https://gemini.google.com/app",
   },
   {
     id: "generic",
     name: "Другой AI",
     mark: "•••",
     hint: "Скопируйте промпт и приложите все файлы вручную.",
+    url: null,
   },
 ];
 
 export function AiExportPage() {
   const project = useProject();
-  const [selected, setSelected] = useState("chatgpt");
-  const [copied, setCopied] = useState(false);
-  const { updateStatus } = useStudio();
   if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
+  return <AiExportWorkspace project={project} />;
+}
+
+function AiExportWorkspace({ project }: { project: Project }) {
+  const [selected, setSelected] = useState("chatgpt");
+  const [copied, setCopied] = useState(false);
+  const promptQuery = useAiPromptQuery(project.id);
+  const downloadMutation = useDownloadAiPackageMutation(project.id);
   const provider = providers.find((item) => item.id === selected)!;
+
+  async function copyPrompt() {
+    if (!promptQuery.data) return;
+    await navigator.clipboard.writeText(promptQuery.data.prompt);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  }
+
+  async function downloadPackage() {
+    const result = await downloadMutation.mutateAsync();
+    const url = URL.createObjectURL(result.blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = result.name;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <>
       <ProjectHeader project={project} active="ai-export" />
@@ -748,6 +784,19 @@ export function AiExportPage() {
               <p>{provider.hint}</p>
             </div>
           </Notice>
+          <Button
+            variant="secondary"
+            disabled={!provider.url}
+            onClick={() =>
+              provider.url &&
+              window.open(provider.url, "_blank", "noopener,noreferrer")
+            }
+          >
+            <ArrowRight />
+            {provider.url
+              ? `Открыть ${provider.name}`
+              : "Откройте свой AI вручную"}
+          </Button>
         </section>
         <section className="panel">
           <div className="panel-heading">
@@ -790,19 +839,31 @@ export function AiExportPage() {
           </div>
           <div className="button-stack">
             <Button
-              onClick={() => {
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1500);
-              }}
+              onClick={() => void copyPrompt()}
+              disabled={!promptQuery.data || promptQuery.isPending}
               variant="secondary"
             >
               {copied ? <Check /> : <Copy />}
               {copied ? "Промпт скопирован" : "Скопировать промпт"}
             </Button>
-            <Button>
-              <Download /> Скачать демо-пакет
+            <Button
+              onClick={() => void downloadPackage()}
+              disabled={downloadMutation.isPending}
+            >
+              {downloadMutation.isPending ? (
+                <LoaderCircle className="spin" />
+              ) : (
+                <Download />
+              )}
+              Скачать AI-пакет
             </Button>
           </div>
+          {(promptQuery.isError || downloadMutation.isError) && (
+            <p className="form-error">
+              <AlertCircle />
+              {promptQuery.error?.message ?? downloadMutation.error?.message}
+            </p>
+          )}
         </section>
       </div>
       <div className="handoff-bar">
@@ -816,7 +877,6 @@ export function AiExportPage() {
         <Link
           className="button button-primary"
           to={`/projects/${project.id}/ai-import`}
-          onClick={() => updateStatus(project.id, "waiting_for_ai_result")}
         >
           У меня есть JSON <ArrowRight />
         </Link>
@@ -825,50 +885,39 @@ export function AiExportPage() {
   );
 }
 
-const exampleJson = JSON.stringify(
-  {
-    schemaVersion: 1,
-    projectId: "focus-not-motivation",
-    clips: demoClips.slice(0, 2).map((clip) => ({
-      title: clip.title,
-      start: clip.start,
-      end: clip.end,
-      hookScore: clip.hookScore,
-      reason: clip.reason,
-      openingCaption: clip.openingCaption,
-      segmentIds: clip.segmentIds,
-    })),
-  },
-  null,
-  2,
-);
-
 export function AiImportPage() {
   const project = useProject();
-  const [value, setValue] = useState("");
-  const [error, setError] = useState("");
-  const navigate = useNavigate();
-  const { updateStatus } = useStudio();
   if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
-  const projectId = project.id;
-  function validate() {
-    try {
-      const parsed = JSON.parse(value) as { clips?: unknown[] };
-      if (!Array.isArray(parsed.clips) || parsed.clips.length === 0)
-        throw new Error("В корневом объекте нужен непустой массив clips.");
-      updateStatus(projectId, "reviewing_clips");
-      navigate(`/projects/${projectId}/clips`);
-    } catch (reason) {
-      setError(
-        reason instanceof SyntaxError
-          ? "JSON содержит синтаксическую ошибку. Проверьте запятые и кавычки."
-          : reason instanceof Error
-            ? reason.message
-            : "Не удалось прочитать JSON.",
-      );
-    }
+  return <AiImportWorkspace project={project} />;
+}
+
+function AiImportWorkspace({ project }: { project: Project }) {
+  const [value, setValue] = useState("");
+  const [validation, setValidation] = useState<ClipsValidationResult | null>(
+    null,
+  );
+  const fileRef = useRef<HTMLInputElement>(null);
+  const validateMutation = useValidateClipsMutation(project.id);
+  const importMutation = useImportClipsMutation(project.id);
+  const navigate = useNavigate();
+
+  function changeValue(next: string) {
+    setValue(next);
+    setValidation(null);
+    validateMutation.reset();
+    importMutation.reset();
   }
+
+  async function validate() {
+    setValidation(await validateMutation.mutateAsync(value));
+  }
+
+  async function confirmImport() {
+    await importMutation.mutateAsync(value);
+    navigate(`/projects/${project.id}/clips`);
+  }
+
   return (
     <>
       <ProjectHeader project={project} active="ai-import" />
@@ -877,48 +926,118 @@ export function AiImportPage() {
           <PageTitle
             eyebrow="Импорт ответа"
             title="Вставьте JSON от AI"
-            text="Сейчас мы демонстрируем экран проверки. Строгая Zod-валидация появится на Этапе 4."
+            text="Сначала backend проверит недоверенный ответ. Сохранение произойдёт только после вашего подтверждения."
           />
           <div className="panel json-panel">
             <div className="json-toolbar">
               <span>
                 <i /> JSON
               </span>
-              <button
-                onClick={() => {
-                  setValue(exampleJson);
-                  setError("");
-                }}
-              >
-                Подставить пример
+              <button onClick={() => fileRef.current?.click()}>
+                <Upload /> Загрузить .json
               </button>
+              <input
+                ref={fileRef}
+                hidden
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void file.text().then(changeValue);
+                  event.target.value = "";
+                }}
+              />
             </div>
             <textarea
               aria-label="JSON от AI"
               value={value}
               onChange={(e) => {
-                setValue(e.target.value);
-                setError("");
+                changeValue(e.target.value);
               }}
               placeholder={'{\n  "schemaVersion": 1,\n  "clips": [...]\n}'}
               spellCheck={false}
             />
-            {error && (
+            {validateMutation.isError && (
               <div className="inline-error">
                 <AlertCircle />
                 <span>
                   <strong>Проверьте данные</strong>
-                  {error}
+                  {validateMutation.error.message}
                 </span>
               </div>
             )}
             <div className="json-actions">
               <span>{value.length.toLocaleString("ru-RU")} символов</span>
-              <Button onClick={validate} disabled={!value.trim()}>
-                Проверить и продолжить <ArrowRight />
+              <Button
+                onClick={() => void validate()}
+                disabled={!value.trim() || validateMutation.isPending}
+              >
+                {validateMutation.isPending && (
+                  <LoaderCircle className="spin" />
+                )}
+                Проверить JSON <ArrowRight />
               </Button>
             </div>
           </div>
+          {validation && (
+            <section className="validation-preview panel">
+              <div className="panel-heading">
+                <h3>Результат проверки</h3>
+                <span className="small-pill">
+                  {validation.valid ? "Можно импортировать" : "Есть ошибки"}
+                </span>
+              </div>
+              {validation.errors.length > 0 && (
+                <div className="validation-list validation-errors">
+                  <strong>Ошибки</strong>
+                  {validation.errors.map((item, index) => (
+                    <p key={`${item.code}-${index}`}>
+                      <AlertCircle /> {item.message}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {validation.warnings.length > 0 && (
+                <div className="validation-list validation-warnings">
+                  <strong>Предупреждения</strong>
+                  {validation.warnings.map((item, index) => (
+                    <p key={`${item.code}-${index}`}>
+                      <AlertCircle /> {item.message}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {validation.preview && (
+                <div className="preview-clips">
+                  {validation.preview.clips.map((clip, index) => (
+                    <article key={`${clip.start}-${clip.end}-${index}`}>
+                      <strong>
+                        {index + 1}. {clip.title}
+                      </strong>
+                      <span>
+                        {clip.start.toFixed(1)}–{clip.end.toFixed(1)} сек. ·{" "}
+                        {clip.hookScore}/10
+                      </span>
+                      <p>{clip.reason}</p>
+                    </article>
+                  ))}
+                </div>
+              )}
+              {importMutation.isError && (
+                <p className="form-error">
+                  <AlertCircle />
+                  {importMutation.error.message}
+                </p>
+              )}
+              <Button
+                onClick={() => void confirmImport()}
+                disabled={!validation.valid || importMutation.isPending}
+              >
+                {importMutation.isPending && <LoaderCircle className="spin" />}
+                Подтвердить импорт
+              </Button>
+            </section>
+          )}
         </section>
         <aside className="side-stack import-help">
           <div className="panel">
@@ -943,8 +1062,8 @@ export function AiImportPage() {
             <div>
               <strong>AI-ответ недоверенный</strong>
               <p>
-                Реальная версия проверит каждое поле и ничего не запустит
-                автоматически.
+                Каждое поле повторно проверяется во время подтверждённого
+                импорта.
               </p>
             </div>
           </Notice>
@@ -955,18 +1074,35 @@ export function AiImportPage() {
 }
 
 function ClipCard({
-  project,
   clip,
   index,
+  overlapText,
 }: {
-  project: Project;
-  clip: Clip;
+  clip: ClipDto;
   index: number;
+  overlapText?: string;
 }) {
-  const { updateClip } = useStudio();
-  const overlaps = index === 2;
+  const [draft, setDraft] = useState({
+    title: clip.title,
+    start: clip.start,
+    end: clip.end,
+    openingCaption: clip.openingCaption,
+    enabled: clip.enabled,
+  });
+  const updateMutation = useUpdateClipMutation(clip.projectId);
+  useEffect(() => {
+    setDraft({
+      title: clip.title,
+      start: clip.start,
+      end: clip.end,
+      openingCaption: clip.openingCaption,
+      enabled: clip.enabled,
+    });
+  }, [clip]);
   return (
-    <article className={clip.enabled ? "clip-card" : "clip-card clip-disabled"}>
+    <article
+      className={draft.enabled ? "clip-card" : "clip-card clip-disabled"}
+    >
       <div className="clip-preview">
         <div className="video-placeholder">
           <span>9:16</span>
@@ -976,7 +1112,7 @@ function ClipCard({
           <Play />
         </button>
         <span className="preview-duration">
-          {formatDuration(clip.end - clip.start)}
+          {formatDuration(draft.end - draft.start)}
         </span>
       </div>
       <div className="clip-main">
@@ -987,9 +1123,12 @@ function ClipCard({
           <label className="switch">
             <input
               type="checkbox"
-              checked={clip.enabled}
+              checked={draft.enabled}
               onChange={(e) =>
-                updateClip(project.id, clip.id, { enabled: e.target.checked })
+                setDraft((current) => ({
+                  ...current,
+                  enabled: e.target.checked,
+                }))
               }
             />
             <span />
@@ -997,19 +1136,28 @@ function ClipCard({
         </div>
         <input
           className="title-input"
-          value={clip.title}
+          value={draft.title}
           onChange={(e) =>
-            updateClip(project.id, clip.id, { title: e.target.value })
+            setDraft((current) => ({ ...current, title: e.target.value }))
           }
         />
         <p>{clip.reason}</p>
         <div className="clip-caption">
           <Subtitles />
-          <span>«{clip.openingCaption}»</span>
+          <input
+            aria-label="Opening caption"
+            value={draft.openingCaption}
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                openingCaption: e.target.value,
+              }))
+            }
+          />
         </div>
-        {overlaps && (
+        {overlapText && (
           <div className="overlap-warning">
-            <AlertCircle /> Пересекается с клипом 1 на 22 секунды
+            <AlertCircle /> {overlapText}
           </div>
         )}
       </div>
@@ -1026,11 +1174,12 @@ function ClipCard({
             <input
               type="number"
               step="0.1"
-              value={clip.start}
+              value={draft.start}
               onChange={(e) =>
-                updateClip(project.id, clip.id, {
+                setDraft((current) => ({
+                  ...current,
                   start: Number(e.target.value),
-                })
+                }))
               }
             />
           </label>
@@ -1040,13 +1189,36 @@ function ClipCard({
             <input
               type="number"
               step="0.1"
-              value={clip.end}
+              value={draft.end}
               onChange={(e) =>
-                updateClip(project.id, clip.id, { end: Number(e.target.value) })
+                setDraft((current) => ({
+                  ...current,
+                  end: Number(e.target.value),
+                }))
               }
             />
           </label>
         </div>
+        <small>Длительность: {(draft.end - draft.start).toFixed(1)} сек.</small>
+        {updateMutation.isError && (
+          <p className="form-error">
+            <AlertCircle />
+            {updateMutation.error.message}
+          </p>
+        )}
+        <Button
+          onClick={() =>
+            updateMutation.mutate({ clipId: clip.id, patch: draft })
+          }
+          disabled={updateMutation.isPending}
+        >
+          {updateMutation.isPending ? (
+            <LoaderCircle className="spin" />
+          ) : (
+            <Check />
+          )}
+          Сохранить
+        </Button>
       </div>
     </article>
   );
@@ -1054,14 +1226,48 @@ function ClipCard({
 
 export function ClipsPage() {
   const project = useProject();
-  const { updateStatus } = useStudio();
   if (project === undefined) return <ProjectLoading />;
   if (!project) return <MissingProject />;
-  const clips = project.clips.length ? project.clips : demoClips;
+  return <ClipsWorkspace project={project} />;
+}
+
+function ClipsWorkspace({ project }: { project: Project }) {
+  const query = useClipsQuery(project.id);
+  if (query.isPending) return <ProjectLoading />;
+  if (query.isError)
+    return (
+      <EmptyState
+        icon={<AlertCircle />}
+        title="Не удалось получить clips"
+        text={query.error.message}
+      />
+    );
+  const clips = query.data;
   const enabledCount = clips.filter((clip) => clip.enabled).length;
+  const overlaps = new Map<number, string>();
+  clips.forEach((clip, index) => {
+    for (let other = 0; other < index; other += 1) {
+      const previous = clips[other]!;
+      const overlap = Math.max(
+        0,
+        Math.min(clip.end, previous.end) - Math.max(clip.start, previous.start),
+      );
+      const shorter = Math.min(
+        clip.end - clip.start,
+        previous.end - previous.start,
+      );
+      if (shorter > 0 && overlap / shorter >= 0.5) {
+        overlaps.set(
+          index,
+          `Пересекается с clip ${other + 1} на ${overlap.toFixed(1)} сек.`,
+        );
+        break;
+      }
+    }
+  });
   return (
     <>
-      <ProjectHeader project={{ ...project, clips }} active="clips" />
+      <ProjectHeader project={project} active="clips" />
       <PageTitle
         eyebrow="Проверка предложений"
         title="Выберите лучшие моменты"
@@ -1077,49 +1283,34 @@ export function ClipsPage() {
           </div>
         }
       />
-      <Notice tone="warning">
-        <AlertCircle />
+      {overlaps.size > 0 && (
+        <Notice tone="warning">
+          <AlertCircle />
+          <div>
+            <strong>Найдены пересечения</strong>
+            <p>Предупреждения не блокируют редактирование.</p>
+          </div>
+        </Notice>
+      )}
+      <div className="clip-list">
+        {clips.map((clip, index) => (
+          <ClipCard
+            key={clip.id}
+            clip={clip}
+            index={index}
+            overlapText={overlaps.get(index)}
+          />
+        ))}
+      </div>
+      <Notice>
+        <CircleDashed />
         <div>
-          <strong>Найдено пересечение</strong>
+          <strong>Следующий этап — монтаж</strong>
           <p>
-            Это предупреждение не блокирует работу. Сравните клипы 1 и 3 перед
-            рендером.
+            {enabledCount} clips включено. Нарезка и рендер появятся на Этапе 5.
           </p>
         </div>
       </Notice>
-      <div className="clip-list">
-        {clips.map((clip, index) => (
-          <ClipCard key={clip.id} project={project} clip={clip} index={index} />
-        ))}
-      </div>
-      <div className="render-settings panel">
-        <div>
-          <span className="eyebrow">Настройки MVP</span>
-          <h3>Формат результата</h3>
-        </div>
-        <div className="setting-chip">
-          <MonitorPlay />
-          <span>
-            <small>Кадрирование</small>
-            <strong>По центру · 9:16</strong>
-          </span>
-        </div>
-        <div className="setting-chip">
-          <Subtitles />
-          <span>
-            <small>Субтитры</small>
-            <strong>Чистые · белые</strong>
-          </span>
-        </div>
-        <span className="coming-note">Другие стили появятся позже</span>
-        <Link
-          className="button button-primary"
-          to={`/projects/${project.id}/render`}
-          onClick={() => updateStatus(project.id, "rendering")}
-        >
-          Подтвердить {enabledCount} клипа <ArrowRight />
-        </Link>
-      </div>
     </>
   );
 }

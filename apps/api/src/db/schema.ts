@@ -75,5 +75,27 @@ export const transcriptSegments = sqliteTable(
   ],
 );
 
+export const clips = sqliteTable(
+  "clips",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    startSeconds: real("start_seconds").notNull(),
+    endSeconds: real("end_seconds").notNull(),
+    hookScore: integer("hook_score").notNull(),
+    reason: text("reason").notNull(),
+    openingCaption: text("opening_caption").notNull(),
+    segmentIdsJson: text("segment_ids_json").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("clips_project_id_idx").on(table.projectId)],
+);
+
 export type ProjectRow = typeof projects.$inferSelect;
 export type JobRow = typeof jobs.$inferSelect;
+export type ClipRow = typeof clips.$inferSelect;
