@@ -55,6 +55,7 @@ def main() -> int:
             str(source),
             language=args.language,
             vad_filter=True,
+            word_timestamps=True,
         )
         language = info.language or args.language or "unknown"
         duration = float(info.duration or 0)
@@ -81,6 +82,21 @@ def main() -> int:
                     "text": text,
                 }
             )
+            for word_index, word in enumerate(segment.words or []):
+                word_text = word.word.strip()
+                if not word_text:
+                    continue
+                emit(
+                    {
+                        "type": "word",
+                        "segmentIndex": index,
+                        "wordIndex": word_index,
+                        "start": float(word.start),
+                        "end": float(word.end),
+                        "text": word_text,
+                        "probability": float(word.probability),
+                    }
+                )
             count += 1
             progress = min(99, round((float(segment.end) / duration) * 100)) if duration > 0 else 1
             emit({"type": "progress", "progress": progress})

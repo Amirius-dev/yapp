@@ -34,6 +34,12 @@ describe("render repository", () => {
         crop_y REAL NOT NULL DEFAULT 50, zoom REAL NOT NULL DEFAULT 1,
         subtitle_x REAL NOT NULL DEFAULT 50, subtitle_y REAL NOT NULL DEFAULT 72,
         subtitle_scale REAL NOT NULL DEFAULT 1, subtitle_align TEXT NOT NULL DEFAULT 'center',
+        template_id TEXT NOT NULL DEFAULT 'clean', accent_color TEXT NOT NULL DEFAULT '#8f7cff',
+        captions_enabled INTEGER NOT NULL DEFAULT 1, opening_caption_enabled INTEGER NOT NULL DEFAULT 1,
+        image_settings_json TEXT NOT NULL DEFAULT '{"brightness":100,"exposure":0,"contrast":100,"saturation":100,"temperature":0,"tint":0,"sharpness":0,"blur":0,"vignette":0,"opacity":100,"rotation":0,"flipHorizontal":false,"zoom":1,"positionX":50,"positionY":50,"backgroundBlur":42,"backgroundDim":0.28,"backgroundSaturation":0.78}',
+        audio_settings_json TEXT NOT NULL DEFAULT '{"volume":1,"muted":false,"fadeInSeconds":0,"fadeOutSeconds":0,"normalize":false,"noiseReduction":false,"music":null}',
+        subtitle_style_json TEXT NOT NULL DEFAULT '{"fontFamily":"Arial","fontWeight":900,"textColor":"#ffffff","activeWordColor":"#ff6b00","backgroundColor":"#000000","backgroundOpacity":0,"outlineColor":"#000000","outlineWidth":4,"shadow":true,"borderRadius":10,"paddingHorizontal":20,"paddingVertical":10,"maxWords":6,"maxLines":2,"animation":"minimal","uppercase":false}',
+        opening_caption_settings_json TEXT NOT NULL DEFAULT '{"enabled":false,"text":"","x":50,"y":22,"scale":1,"color":"#ffffff","backgroundColor":"#000000","backgroundOpacity":0.55,"durationSeconds":3,"animation":"fade"}',
         render_status TEXT NOT NULL DEFAULT 'idle', render_progress INTEGER NOT NULL DEFAULT 0,
         render_error TEXT, output_file_name TEXT, rendered_at INTEGER
       );

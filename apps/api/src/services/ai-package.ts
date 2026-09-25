@@ -14,35 +14,38 @@ export const CLIPS_JSON_SCHEMA = {
   additionalProperties: false,
   required: ["schemaVersion", "projectId", "clips"],
   properties: {
-    schemaVersion: { const: 1 },
+    schemaVersion: { const: 2 },
     projectId: { type: "string", minLength: 1 },
     clips: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "title",
-          "start",
-          "end",
-          "hookScore",
-          "reason",
-          "openingCaption",
-          "segmentIds",
-        ],
+        required: ["title", "ranges", "hookScore", "reason", "openingCaption"],
         properties: {
           title: { type: "string", minLength: 1, maxLength: 160 },
-          start: { type: "number" },
-          end: { type: "number" },
+          ranges: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["start", "end", "segmentIds"],
+              properties: {
+                start: { type: "number" },
+                end: { type: "number" },
+                segmentIds: {
+                  type: "array",
+                  minItems: 1,
+                  uniqueItems: true,
+                  items: { type: "integer", minimum: 0 },
+                },
+              },
+            },
+          },
           hookScore: { type: "integer", minimum: 1, maximum: 10 },
           reason: { type: "string", minLength: 1, maxLength: 1000 },
           openingCaption: { type: "string", minLength: 1, maxLength: 300 },
-          segmentIds: {
-            type: "array",
-            minItems: 1,
-            uniqueItems: true,
-            items: { type: "integer", minimum: 0 },
-          },
         },
       },
     },

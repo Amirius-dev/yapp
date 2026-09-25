@@ -1,8 +1,25 @@
 import { randomUUID } from "node:crypto";
 import { resolve, sep } from "node:path";
 import Database from "better-sqlite3";
-import type { TranscriptSegmentDto } from "@studio/contracts";
-import { z } from "zod";
+import type {
+  AudioSettings,
+  ImageAdjustments,
+  OpeningCaptionSettings,
+  SubtitleStyle,
+  TranscriptSegmentDto,
+  TranscriptWordDto,
+} from "@studio/contracts";
+import {
+  audioSettingsSchema,
+  DEFAULT_AUDIO_SETTINGS,
+  DEFAULT_IMAGE_ADJUSTMENTS,
+  DEFAULT_OPENING_CAPTION_SETTINGS,
+  DEFAULT_SUBTITLE_STYLE,
+  imageAdjustmentsSchema,
+  openingCaptionSettingsSchema,
+  subtitleStyleSchema,
+} from "@studio/contracts";
+import { z, type ZodType } from "zod";
 import { dataRoot, databasePath } from "./config.js";
 
 export type ClaimedTranscriptionJob = {
@@ -66,9 +83,21 @@ export function recoverInterruptedJobs(db: Database.Database) {
       db.prepare(
         "UPDATE jobs SET status = 'failed', error_message = ?, finished_at = ? WHERE id = ?",
       ).run(message, now, row.id);
+      const hasPublishedTranscript = Boolean(
+        db
+          .prepare(
+            "SELECT 1 FROM transcript_segments WHERE project_id = ? LIMIT 1",
+          )
+          .get(row.project_id),
+      );
       db.prepare(
-        "UPDATE projects SET status = 'failed', error_message = ?, updated_at = ? WHERE id = ?",
-      ).run(message, now, row.project_id);
+        "UPDATE projects SET status = ?, error_message = ?, updated_at = ? WHERE id = ?",
+      ).run(
+        hasPublishedTranscript ? "ready_for_ai" : "failed",
+        message,
+        now,
+        row.project_id,
+      );
     }
     for (const row of renderRows) {
       const renderMessage =
@@ -176,9 +205,13 @@ export function completeJob(
   job: ClaimedTranscriptionJob,
   language: string,
   segments: Omit<TranscriptSegmentDto, "id">[],
+  words: Omit<TranscriptWordDto, "id">[],
 ) {
   const complete = db.transaction(() => {
     db.prepare("DELETE FROM transcript_segments WHERE project_id = ?").run(
+      job.projectId,
+    );
+    db.prepare("DELETE FROM transcript_words WHERE project_id = ?").run(
       job.projectId,
     );
     const insert = db.prepare(
@@ -196,6 +229,23 @@ export function completeJob(
         segment.text,
       );
     }
+    const insertWord = db.prepare(
+      `INSERT INTO transcript_words
+       (id, project_id, segment_index, word_index, start_seconds, end_seconds, text, probability)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const word of words) {
+      insertWord.run(
+        randomUUID(),
+        job.projectId,
+        word.segmentIndex,
+        word.wordIndex,
+        word.startSeconds,
+        word.endSeconds,
+        word.text,
+        word.probability,
+      );
+    }
     const now = Date.now();
     db.prepare(
       "UPDATE jobs SET status = 'completed', progress = 100, finished_at = ?, error_message = NULL WHERE id = ?",
@@ -203,6 +253,11 @@ export function completeJob(
     db.prepare(
       "UPDATE projects SET status = 'ready_for_ai', language = ?, error_message = NULL, updated_at = ? WHERE id = ?",
     ).run(language, now, job.projectId);
+    db.prepare(
+      `UPDATE clips SET render_status = 'idle', render_progress = 0,
+       render_error = NULL, output_file_name = NULL, rendered_at = NULL,
+       updated_at = ? WHERE project_id = ?`,
+    ).run(now, job.projectId);
   });
   complete.immediate();
 }
@@ -217,9 +272,21 @@ export function failJob(
     db.prepare(
       "UPDATE jobs SET status = 'failed', error_message = ?, finished_at = ? WHERE id = ?",
     ).run(message, now, job.id);
+    const hasTranscript = Boolean(
+      db
+        .prepare(
+          "SELECT 1 FROM transcript_segments WHERE project_id = ? LIMIT 1",
+        )
+        .get(job.projectId),
+    );
     db.prepare(
-      "UPDATE projects SET status = 'failed', error_message = ?, updated_at = ? WHERE id = ?",
-    ).run(message, now, job.projectId);
+      "UPDATE projects SET status = ?, error_message = ?, updated_at = ? WHERE id = ?",
+    ).run(
+      hasTranscript ? "ready_for_ai" : "failed",
+      message,
+      now,
+      job.projectId,
+    );
   });
   fail.immediate();
 }
@@ -237,8 +304,52 @@ export type RenderClipData = {
   subtitleY: number;
   subtitleScale: number;
   subtitleAlign: "left" | "center" | "right";
+  templateId: "clean" | "motivational" | "podcast";
+  accentColor: string;
+  captionsEnabled: boolean;
+  openingCaptionEnabled: boolean;
+  image: ImageAdjustments;
+  audio: AudioSettings;
+  subtitleStyle: SubtitleStyle;
+  openingCaptionSettings: OpeningCaptionSettings;
+  ranges: Array<{
+    id: string;
+    start: number;
+    end: number;
+    transition: {
+      type: "hard-cut" | "crossfade" | "dip-to-black";
+      durationSeconds: number;
+    };
+  }>;
+  cropKeyframes: Array<{
+    rangeId: string;
+    sourceTimeSeconds: number;
+    cropX: number;
+    cropY: number;
+    zoom: number;
+    easing: "linear" | "ease-in-out" | "hold";
+  }>;
+  subtitleKeyframes: Array<{
+    rangeId: string;
+    sourceTimeSeconds: number;
+    subtitleX: number;
+    subtitleY: number;
+    subtitleScale: number;
+    subtitleAlign: "left" | "center" | "right";
+    transition: "hold" | "smooth";
+  }>;
   segments: Array<{ startSeconds: number; endSeconds: number; text: string }>;
+  words: Array<{ startSeconds: number; endSeconds: number; text: string }>;
 };
+
+function parseSettings<T>(schema: ZodType<T>, value: string, fallback: T) {
+  try {
+    const parsed = schema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export function getRenderClip(
   db: Database.Database,
@@ -249,7 +360,10 @@ export function getRenderClip(
     .prepare(
       `SELECT id, start_seconds, end_seconds, opening_caption,
               crop_mode, crop_x, crop_y, zoom,
-              subtitle_x, subtitle_y, subtitle_scale, subtitle_align
+              subtitle_x, subtitle_y, subtitle_scale, subtitle_align,
+              template_id, accent_color, captions_enabled, opening_caption_enabled,
+              image_settings_json, audio_settings_json, subtitle_style_json,
+              opening_caption_settings_json
        FROM clips WHERE id = ? AND project_id = ?`,
     )
     .get(clipId, projectId) as
@@ -266,9 +380,47 @@ export function getRenderClip(
         subtitle_y: number;
         subtitle_scale: number;
         subtitle_align: "left" | "center" | "right";
+        template_id: "clean" | "motivational" | "podcast";
+        accent_color: string;
+        captions_enabled: number;
+        opening_caption_enabled: number;
+        image_settings_json: string;
+        audio_settings_json: string;
+        subtitle_style_json: string;
+        opening_caption_settings_json: string;
       }
     | undefined;
   if (!clip) throw new Error("Clip не найден в render job.");
+  const rangeRows = db
+    .prepare(
+      `SELECT id, start_seconds, end_seconds, transition_type, transition_duration_seconds FROM clip_ranges
+     WHERE clip_id = ? ORDER BY range_order`,
+    )
+    .all(clipId) as Array<{
+    id: string;
+    start_seconds: number;
+    end_seconds: number;
+    transition_type: "hard-cut" | "crossfade" | "dip-to-black";
+    transition_duration_seconds: number;
+  }>;
+  const ranges = rangeRows.length
+    ? rangeRows.map((range) => ({
+        id: range.id,
+        start: range.start_seconds,
+        end: range.end_seconds,
+        transition: {
+          type: range.transition_type,
+          durationSeconds: range.transition_duration_seconds,
+        },
+      }))
+    : [
+        {
+          id: clip.id,
+          start: clip.start_seconds,
+          end: clip.end_seconds,
+          transition: { type: "hard-cut" as const, durationSeconds: 0 },
+        },
+      ];
   const segments = db
     .prepare(
       `SELECT start_seconds, end_seconds, text FROM transcript_segments
@@ -279,6 +431,44 @@ export function getRenderClip(
     start_seconds: number;
     end_seconds: number;
     text: string;
+  }>;
+  const words = db
+    .prepare(
+      `SELECT start_seconds, end_seconds, text FROM transcript_words
+     WHERE project_id = ? AND end_seconds > ? AND start_seconds < ?
+     ORDER BY start_seconds`,
+    )
+    .all(projectId, clip.start_seconds, clip.end_seconds) as Array<{
+    start_seconds: number;
+    end_seconds: number;
+    text: string;
+  }>;
+  const cropFrames = db
+    .prepare(
+      `SELECT range_id, source_time_seconds, crop_x, crop_y, zoom, easing
+     FROM crop_keyframes WHERE clip_id = ? ORDER BY source_time_seconds`,
+    )
+    .all(clipId) as Array<{
+    range_id: string;
+    source_time_seconds: number;
+    crop_x: number;
+    crop_y: number;
+    zoom: number;
+    easing: "linear" | "ease-in-out" | "hold";
+  }>;
+  const subtitleFrames = db
+    .prepare(
+      `SELECT range_id, source_time_seconds, subtitle_x, subtitle_y, subtitle_scale, subtitle_align, transition
+     FROM subtitle_keyframes WHERE clip_id = ? ORDER BY source_time_seconds`,
+    )
+    .all(clipId) as Array<{
+    range_id: string;
+    source_time_seconds: number;
+    subtitle_x: number;
+    subtitle_y: number;
+    subtitle_scale: number;
+    subtitle_align: "left" | "center" | "right";
+    transition: "hold" | "smooth";
   }>;
   return {
     id: clip.id,
@@ -293,10 +483,57 @@ export function getRenderClip(
     subtitleY: clip.subtitle_y,
     subtitleScale: clip.subtitle_scale,
     subtitleAlign: clip.subtitle_align,
+    templateId: clip.template_id,
+    accentColor: clip.accent_color,
+    captionsEnabled: Boolean(clip.captions_enabled),
+    openingCaptionEnabled: Boolean(clip.opening_caption_enabled),
+    image: parseSettings(
+      imageAdjustmentsSchema,
+      clip.image_settings_json,
+      DEFAULT_IMAGE_ADJUSTMENTS,
+    ),
+    audio: parseSettings(
+      audioSettingsSchema,
+      clip.audio_settings_json,
+      DEFAULT_AUDIO_SETTINGS,
+    ),
+    subtitleStyle: parseSettings(
+      subtitleStyleSchema,
+      clip.subtitle_style_json,
+      DEFAULT_SUBTITLE_STYLE,
+    ),
+    openingCaptionSettings: parseSettings(
+      openingCaptionSettingsSchema,
+      clip.opening_caption_settings_json,
+      { ...DEFAULT_OPENING_CAPTION_SETTINGS, text: clip.opening_caption },
+    ),
+    ranges,
+    cropKeyframes: cropFrames.map((frame) => ({
+      rangeId: frame.range_id,
+      sourceTimeSeconds: frame.source_time_seconds,
+      cropX: frame.crop_x,
+      cropY: frame.crop_y,
+      zoom: frame.zoom,
+      easing: frame.easing,
+    })),
+    subtitleKeyframes: subtitleFrames.map((frame) => ({
+      rangeId: frame.range_id,
+      sourceTimeSeconds: frame.source_time_seconds,
+      subtitleX: frame.subtitle_x,
+      subtitleY: frame.subtitle_y,
+      subtitleScale: frame.subtitle_scale,
+      subtitleAlign: frame.subtitle_align,
+      transition: frame.transition,
+    })),
     segments: segments.map((segment) => ({
       startSeconds: segment.start_seconds,
       endSeconds: segment.end_seconds,
       text: segment.text,
+    })),
+    words: words.map((word) => ({
+      startSeconds: word.start_seconds,
+      endSeconds: word.end_seconds,
+      text: word.text,
     })),
   };
 }

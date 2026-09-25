@@ -70,6 +70,20 @@ export function useUpdateClipMutation(projectId: string) {
       clipId: string;
       patch: ClipUpdateInput;
     }) => updateClip(projectId, clipId, patch),
+    onMutate: async ({ clipId, patch }) => {
+      await client.cancelQueries({ queryKey: clipKeys.all(projectId) });
+      const previous = client.getQueryData<ClipDto[]>(clipKeys.all(projectId));
+      client.setQueryData<ClipDto[]>(clipKeys.all(projectId), (current) =>
+        current?.map((clip) =>
+          clip.id === clipId ? { ...clip, ...patch } : clip,
+        ),
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous)
+        client.setQueryData(clipKeys.all(projectId), context.previous);
+    },
     onSuccess: (updated) => {
       client.setQueryData<ClipDto[]>(clipKeys.all(projectId), (current) =>
         current?.map((clip) => (clip.id === updated.id ? updated : clip)),

@@ -32,14 +32,27 @@ export const transcriptSegmentSchema = z.object({
   text: z.string().min(1),
 });
 
+export const transcriptWordSchema = z.object({
+  id: z.uuid(),
+  segmentIndex: z.number().int().nonnegative(),
+  wordIndex: z.number().int().nonnegative(),
+  startSeconds: z.number().nonnegative(),
+  endSeconds: z.number().positive(),
+  text: z.string().min(1),
+  probability: z.number().min(0).max(1),
+});
+
 export const transcriptSchema = z.object({
   projectId: z.uuid(),
   language: z.string().nullable(),
   durationSeconds: z.number().nonnegative(),
   segments: z.array(transcriptSegmentSchema),
+  words: z.array(transcriptWordSchema),
+  hasWordTimestamps: z.boolean(),
 });
 
 export type JobStatus = z.infer<typeof jobStatusSchema>;
 export type JobDto = z.infer<typeof jobSchema>;
 export type TranscriptSegmentDto = z.infer<typeof transcriptSegmentSchema>;
+export type TranscriptWordDto = z.infer<typeof transcriptWordSchema>;
 export type TranscriptDto = z.infer<typeof transcriptSchema>;

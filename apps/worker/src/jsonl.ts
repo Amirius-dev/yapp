@@ -17,6 +17,15 @@ const progressEvent = z.object({
   type: z.literal("progress"),
   progress: z.number().min(0).max(100),
 });
+const wordEvent = z.object({
+  type: z.literal("word"),
+  segmentIndex: z.number().int().nonnegative(),
+  wordIndex: z.number().int().nonnegative(),
+  start: z.number().nonnegative(),
+  end: z.number().positive(),
+  text: z.string().trim().min(1),
+  probability: z.number().min(0).max(1),
+});
 const resultEvent = z.object({
   type: z.literal("result"),
   language: z.string().min(1),
@@ -31,6 +40,7 @@ const errorEvent = z.object({
 export const runnerEventSchema = z.discriminatedUnion("type", [
   metadataEvent,
   segmentEvent,
+  wordEvent,
   progressEvent,
   resultEvent,
   errorEvent,

@@ -1,5 +1,19 @@
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import type { SubtitleCue } from "../schema";
+import {
+  interpolateSubtitle,
+  outputToSourceTime,
+} from "@studio/contracts/timeline";
+import { VIDEO_TEMPLATES } from "@studio/contracts/templates";
+import type { SubtitleStyle } from "@studio/contracts";
+
+function colorWithOpacity(hex: string, opacity: number) {
+  const value = hex.replace("#", "");
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
 
 export const SUBTITLE_LAYOUT = {
   topPercent: 72,
@@ -16,6 +30,11 @@ export function Subtitles({
   y,
   scale,
   align,
+  ranges,
+  keyframes,
+  templateId,
+  accentColor,
+  style,
 }: {
   cues: SubtitleCue[];
   hiddenUntil?: number;
@@ -23,6 +42,19 @@ export function Subtitles({
   y: number;
   scale: number;
   align: "left" | "center" | "right";
+  ranges: Array<{ id: string; start: number; end: number }>;
+  keyframes: Array<{
+    rangeId: string;
+    sourceTimeSeconds: number;
+    subtitleX: number;
+    subtitleY: number;
+    subtitleScale: number;
+    subtitleAlign: "left" | "center" | "right";
+    transition: "hold" | "smooth";
+  }>;
+  templateId: "clean" | "motivational" | "podcast";
+  accentColor: string;
+  style: SubtitleStyle;
 }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -34,6 +66,32 @@ export function Subtitles({
           (item) => time >= item.startSeconds && time < item.endSeconds,
         );
   if (!cue) return null;
+  const mapped = outputToSourceTime(ranges, time);
+  const animated = mapped
+    ? interpolateSubtitle(keyframes, mapped.rangeId, mapped.sourceTime, {
+        subtitleX: x,
+        subtitleY: y,
+        subtitleScale: scale,
+        subtitleAlign: align,
+      })
+    : {
+        subtitleX: x,
+        subtitleY: y,
+        subtitleScale: scale,
+        subtitleAlign: align,
+      };
+  x = animated.subtitleX;
+  y = animated.subtitleY;
+  scale = animated.subtitleScale;
+  align = animated.subtitleAlign;
+  const template = VIDEO_TEMPLATES[templateId];
+  const cueProgress = Math.min(
+    1,
+    Math.max(0, (time - cue.startSeconds) / 0.14),
+  );
+  const entranceScale =
+    style.animation === "pop" ? 0.88 + cueProgress * 0.12 : 1;
+  const entranceOpacity = style.animation === "none" ? 1 : cueProgress;
   const position = {
     x: Math.min(85, Math.max(15, x)),
     y: Math.min(84, Math.max(18, y)),
@@ -47,7 +105,8 @@ export function Subtitles({
         left: `${position.x}%`,
         top: `${position.y}%`,
         width: `${widthPercent}%`,
-        transform: `translate(-50%, -50%) scale(${scale})`,
+        transform: `translate(-50%, -50%) scale(${scale * entranceScale})`,
+        opacity: entranceOpacity,
         display: "flex",
         justifyContent:
           align === "left"
@@ -60,23 +119,44 @@ export function Subtitles({
     >
       <span
         style={{
-          color: "white",
-          padding: "10px 20px",
-          fontFamily: "Arial, sans-serif",
-          fontWeight: 900,
-          fontSize: SUBTITLE_LAYOUT.fontSize,
+          color: style.textColor,
+          padding: `${style.paddingVertical}px ${style.paddingHorizontal}px`,
+          fontFamily: `${style.fontFamily}, sans-serif`,
+          fontWeight: style.fontWeight,
+          fontSize: template.fontSize,
           lineHeight: SUBTITLE_LAYOUT.lineHeight,
           maxWidth: SUBTITLE_LAYOUT.maxWidth,
           overflowWrap: "anywhere",
           display: "-webkit-box",
-          WebkitLineClamp: 2,
+          WebkitLineClamp: style.maxLines,
           WebkitBoxOrient: "vertical",
           overflow: "hidden",
-          textShadow:
-            "-4px -4px 0 #000, 4px -4px 0 #000, -4px 4px 0 #000, 4px 4px 0 #000, 0 6px 16px rgba(0,0,0,0.9)",
+          textTransform: style.uppercase ? "uppercase" : "none",
+          backgroundColor: colorWithOpacity(
+            style.backgroundColor,
+            style.backgroundOpacity,
+          ),
+          borderRadius: style.borderRadius,
+          WebkitTextStroke: `${style.outlineWidth}px ${style.outlineColor}`,
+          paintOrder: "stroke fill",
+          textShadow: style.shadow ? "0 6px 16px rgba(0,0,0,0.72)" : "none",
         }}
       >
-        {cue.text}
+        {cue.words.length
+          ? cue.words.map((word, index) => (
+              <span
+                key={`${word.startSeconds}-${index}`}
+                style={{
+                  color:
+                    time >= word.startSeconds && time < word.endSeconds
+                      ? style.activeWordColor || accentColor
+                      : style.textColor,
+                }}
+              >
+                {word.text}{" "}
+              </span>
+            ))
+          : cue.text}
       </span>
     </div>
   );

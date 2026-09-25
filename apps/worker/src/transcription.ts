@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import type { TranscriptSegmentDto } from "@studio/contracts";
+import type {
+  TranscriptSegmentDto,
+  TranscriptWordDto,
+} from "@studio/contracts";
 import {
   assertPythonAvailable,
   pythonPath,
@@ -13,6 +16,7 @@ import { parseRunnerLine } from "./jsonl.js";
 export type TranscriptionResult = {
   language: string;
   segments: Omit<TranscriptSegmentDto, "id">[];
+  words: Omit<TranscriptWordDto, "id">[];
 };
 
 export async function runTranscription(
@@ -27,6 +31,7 @@ export async function runTranscription(
     const child = spawn(pythonPath, args, { shell: false, windowsHide: true });
     const lines = createInterface({ input: child.stdout });
     const segments: Omit<TranscriptSegmentDto, "id">[] = [];
+    const words: Omit<TranscriptWordDto, "id">[] = [];
     let language = "";
     let reportedError: string | null = null;
     let protocolError: Error | null = null;
@@ -46,6 +51,16 @@ export async function runTranscription(
             startSeconds: event.start,
             endSeconds: event.end,
             text: event.text,
+          });
+        }
+        if (event.type === "word") {
+          words.push({
+            segmentIndex: event.segmentIndex,
+            wordIndex: event.wordIndex,
+            startSeconds: event.start,
+            endSeconds: event.end,
+            text: event.text,
+            probability: event.probability,
           });
         }
         if (event.type === "progress") onProgress(event.progress);
@@ -79,7 +94,7 @@ export async function runTranscription(
       }
       if (!language)
         return reject(new Error("Runner не вернул определённый язык."));
-      resolve({ language, segments });
+      resolve({ language, segments, words });
     });
   });
 }

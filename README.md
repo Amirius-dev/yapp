@@ -191,6 +191,8 @@ Backend валидирует его через Zod:
   импорт и проверка clips.json
 /projects/:id/clips
   редактор предложенных фрагментов
+/projects/:id/clips/:clipId/editor
+  полноэкранный монтажный редактор клипа
 /projects/:id/render
   очередь и прогресс рендера
 /projects/:id/results
@@ -251,6 +253,13 @@ Backend является источником истины. Frontend не дол
 - render_status
 - output_file_path
 
+Настройки изображения, звука, субтитров и opening caption хранятся в
+валидируемых JSON-полях клипа. Несмежные части клипа, переходы и keyframes
+хранятся отдельно в `clip_ranges`, `crop_keyframes` и
+`subtitle_keyframes`. Пользовательские пресеты находятся в
+`editor_presets`. Старые клипы миграция автоматически превращает в один
+range, не удаляя исходные данные и готовые renders.
+
 ### jobs
 
 - id
@@ -278,6 +287,13 @@ POST   /api/projects/:id/clips/validate
 POST   /api/projects/:id/clips/import
 GET    /api/projects/:id/clips
 PATCH  /api/projects/:id/clips/:clipId
+GET    /api/projects/:id/clips/:clipId/editor
+PUT    /api/projects/:id/clips/:clipId/editor
+POST   /api/projects/:id/clips/:clipId/music
+GET    /api/projects/:id/music/:fileName
+GET    /api/editor/presets
+POST   /api/editor/presets
+DELETE /api/editor/presets/:presetId
 POST   /api/projects/:id/render
 GET    /api/projects/:id/jobs
 GET    /api/projects/:id/results
@@ -285,7 +301,7 @@ GET    /api/projects/:id/source/media
 GET    /api/projects/:id/clips/:clipId/media
 ```
 
-## Локальный запуск после Этапа 5
+## Локальный запуск после Этапа 7
 
 Требования: Node.js 20+, pnpm, Python 3.9+ и FFmpeg с `ffprobe`. Если pnpm ещё
 не включён, выполните `corepack enable` один раз. На macOS FFmpeg можно
@@ -312,13 +328,22 @@ pnpm dev
 После транскрипции страница ручного AI-моста создаёт ZIP с настоящим
 транскриптом, промптом, JSON Schema и контекстом проекта. Пользователь вручную
 передаёт пакет выбранному AI, вставляет полученный JSON, проверяет preview и
-явно подтверждает импорт. Предложения и правки редактора clips сохраняются в
-SQLite. После подтверждения clips страница рендера создаёт фоновую задачу:
-worker последовательно готовит H.264/AAC-фрагмент через FFmpeg, собирает
-вертикальный ролик 1080×1920 через Remotion и проверяет итог через ffprobe.
-Готовые MP4 находятся в `data/projects/{projectId}/outputs/`, доступны для
-Range-preview и скачивания через API. Никакие AI API или CLI-агенты не
-вызываются.
+явно подтверждает импорт. `schemaVersion: 2` поддерживает как один цельный
+фрагмент, так и несколько несмежных ranges в заданном порядке; версия 1 по-
+прежнему принимается и нормализуется в один range.
+
+Полноэкранный редактор сохраняет ranges, transitions, crop/subtitle keyframes,
+Fill/Fit, коррекцию изображения, настройки звука и музыки, субтитры, opening
+caption и пользовательские пресеты в SQLite. Preview, worker и Remotion
+используют общую output-time модель из `@studio/contracts`: пропуски между
+ranges не воспроизводятся, а длительность считается как сумма частей с учётом
+переходов. После сохранения устаревший render автоматически инвалидируется.
+
+Страница рендера создаёт фоновую задачу: worker последовательно собирает
+ranges и звук через FFmpeg, создаёт вертикальный ролик 1080×1920 через
+Remotion, публикует H.264/AAC MP4 атомарно и проверяет итог через ffprobe.
+Готовые файлы находятся в `data/projects/{projectId}/outputs/`, доступны для
+просмотра и скачивания через API. Никакие AI API или CLI-агенты не вызываются.
 
 Первый Remotion-рендер может занять больше времени: renderer подготавливает
 локальный Chromium. Для рендера API, worker и frontend должны работать
@@ -424,14 +449,42 @@ pnpm build
 Timeline, keyframes и изменение положения субтитров во времени относятся к
 Этапу 6 и в Этап 5.1 не входят.
 
-### Этап 6 — улучшения
+### Этап 6 — продвинутый timeline editor
 
-- определение активного лица;
-- оценка тишины и границ фразы;
-- waveform editor;
-- несколько стилей субтитров;
-- CLI-провайдеры;
-- режим Idea to Video.
+- word-level timestamps из faster-whisper с phrase-level fallback;
+- clips из одного или нескольких упорядоченных ranges;
+- общий source-to-output timeline для preview, worker и Remotion;
+- crop и subtitle keyframes без интерполяции через монтажные cuts;
+- шаблоны Clean, Motivational и Podcast с безопасным accent color;
+- локальный preview, scrub, keyboard, mouse и touch;
+- hard-cut сборка ranges и финальный Remotion-рендер 1080×1920.
+
+Определение лица, waveform, CLI-провайдеры и Idea to Video не входят в этот
+этап и остаются за пределами текущего MVP.
+
+### Этап 7 — практичный desktop-видеоредактор
+
+- AI-пакет `schemaVersion: 2` с одним или несколькими несмежными ranges;
+- единая source/output-time модель для frontend, worker и Remotion;
+- трёхпанельный desktop editor и многодорожечная монтажная шкала;
+- reorder, resize, split, duplicate и удаление ranges;
+- локальный draft, undo/redo, горячие клавиши и атомарное сохранение;
+- Fill и Fit с синхронным размытым фоном;
+- коррекция изображения, crop/subtitle keyframes и безопасные пресеты;
+- громкость, fades, нормализация, шумоподавление и один локальный music track;
+- расширенный стиль субтитров, opening caption и переходы между ranges;
+- пользовательские пресеты и автоматическая инвалидация старого render;
+- совместимый MP4: H.264/AAC, 1080×1920, 30 FPS, `yuv420p`, faststart.
+
+Remotion является источником истины для финального изображения. Browser
+preview использует те же значения и CSS-фильтры; небольшое отличие оттенков
+возможно из-за цветового управления браузера и кодека. Нормализация,
+шумоподавление, fades и ducking музыки слышны только после render — интерфейс
+не имитирует эти FFmpeg-фильтры в реальном времени.
+
+Текущие ограничения: без определения и сопровождения лица, waveform,
+покадровой кривой громкости, нескольких музыкальных дорожек и удаления текста,
+который уже был вшит в исходное видео.
 
 ## Критерий готовности MVP
 

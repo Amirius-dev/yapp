@@ -3,6 +3,7 @@ import { basename, join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { projectParamsSchema, renderRequestSchema } from "@studio/contracts";
+import { timelineDuration } from "@studio/contracts";
 import { projectsRoot } from "../config.js";
 import { HttpError } from "../lib/http-error.js";
 import type { ClipsRepository } from "../repositories/clips.js";
@@ -50,7 +51,7 @@ export async function registerRenderRoutes(
         const mediaUrl = `/api/projects/${projectId}/clips/${clip.id}/media`;
         return {
           clip,
-          durationSeconds: clip.end - clip.start,
+          durationSeconds: timelineDuration(clip.ranges),
           fileSizeBytes: info.size,
           mediaUrl,
           downloadUrl: `${mediaUrl}?download=1`,

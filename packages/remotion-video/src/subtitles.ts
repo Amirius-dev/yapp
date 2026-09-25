@@ -1,10 +1,14 @@
 import type { SubtitleCue } from "./schema.js";
+import { buildTimeline, type TimelineRange } from "@studio/contracts/timeline";
 
 export type TimedTranscriptSegment = {
   startSeconds: number;
   endSeconds: number;
   text: string;
 };
+
+export type TimedTranscriptWord = TimedTranscriptSegment;
+export type SubtitleRange = TimelineRange;
 
 function splitWords(words: string[], maxWords: number) {
   const partCount = Math.ceil(words.length / maxWords);
@@ -56,9 +60,65 @@ export function buildSubtitleCues(
           startSeconds: relativeStart,
           endSeconds: relativeEnd,
           text,
+          words: [],
         });
       }
     }
   }
   return cues;
+}
+
+export function buildTimelineSubtitleCues(
+  ranges: SubtitleRange[],
+  segments: TimedTranscriptSegment[],
+  words: TimedTranscriptWord[],
+  maxWords = 6,
+): SubtitleCue[] {
+  const result: SubtitleCue[] = [];
+  for (const range of buildTimeline(ranges)) {
+    const outputOffset = range.outputStart;
+    const visibleOutputEnd = range.outputEnd - range.transitionOutDuration;
+    const rangeWords = words.filter(
+      (word) => word.endSeconds > range.start && word.startSeconds < range.end,
+    );
+    if (rangeWords.length) {
+      for (let index = 0; index < rangeWords.length; index += maxWords) {
+        const group = rangeWords.slice(index, index + maxWords);
+        const mappedWords = group
+          .map((word) => ({
+            startSeconds:
+              outputOffset +
+              Math.max(range.start, word.startSeconds) -
+              range.start,
+            endSeconds: Math.min(
+              visibleOutputEnd,
+              outputOffset + Math.min(range.end, word.endSeconds) - range.start,
+            ),
+            text: word.text.trim(),
+          }))
+          .filter((word) => word.text && word.endSeconds > word.startSeconds);
+        if (mappedWords.length)
+          result.push({
+            startSeconds: mappedWords[0]!.startSeconds,
+            endSeconds: mappedWords.at(-1)!.endSeconds,
+            text: mappedWords.map((word) => word.text).join(" "),
+            words: mappedWords,
+          });
+      }
+    } else {
+      result.push(
+        ...buildSubtitleCues(segments, range.start, range.end, maxWords)
+          .map((cue) => ({
+            ...cue,
+            startSeconds: cue.startSeconds + outputOffset,
+            endSeconds: Math.min(
+              visibleOutputEnd,
+              cue.endSeconds + outputOffset,
+            ),
+          }))
+          .filter((cue) => cue.endSeconds > cue.startSeconds),
+      );
+    }
+  }
+  return result;
 }

@@ -4,18 +4,7 @@ import { OpeningCaption } from "./components/OpeningCaption";
 import { Subtitles } from "./components/Subtitles";
 import { VideoLayers } from "./components/VideoLayers";
 
-function normalized(value: string) {
-  return value
-    .toLocaleLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim();
-}
-
 export function VerticalClip(props: VerticalClipProps) {
-  const hideOpening = Boolean(
-    props.cues[0] &&
-    normalized(props.cues[0].text) === normalized(props.openingCaption),
-  );
   return (
     <AbsoluteFill>
       <VideoLayers
@@ -24,16 +13,30 @@ export function VerticalClip(props: VerticalClipProps) {
         cropX={props.cropX}
         cropY={props.cropY}
         zoom={props.zoom}
+        ranges={props.ranges}
+        cropKeyframes={props.cropKeyframes}
+        image={props.image}
       />
-      <OpeningCaption text={props.openingCaption} hidden={hideOpening} />
-      <Subtitles
-        cues={props.cues}
-        hiddenUntil={!hideOpening && props.openingCaption.trim() ? 3 : 0}
-        x={props.subtitleX}
-        y={props.subtitleY}
-        scale={props.subtitleScale}
-        align={props.subtitleAlign}
-      />
+      <OpeningCaption settings={props.openingCaptionSettings} />
+      {props.captionsEnabled && (
+        <Subtitles
+          cues={props.cues}
+          hiddenUntil={
+            props.openingCaptionSettings.enabled
+              ? props.openingCaptionSettings.durationSeconds
+              : 0
+          }
+          x={props.subtitleX}
+          y={props.subtitleY}
+          scale={props.subtitleScale}
+          align={props.subtitleAlign}
+          ranges={props.ranges}
+          keyframes={props.subtitleKeyframes}
+          templateId={props.templateId}
+          accentColor={props.accentColor}
+          style={props.subtitleStyle}
+        />
+      )}
     </AbsoluteFill>
   );
 }

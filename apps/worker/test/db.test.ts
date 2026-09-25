@@ -41,6 +41,17 @@ function createTestDatabase() {
       text TEXT NOT NULL,
       UNIQUE(project_id, segment_index)
     );
+    CREATE TABLE transcript_words (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      segment_index INTEGER NOT NULL,
+      word_index INTEGER NOT NULL,
+      start_seconds REAL NOT NULL,
+      end_seconds REAL NOT NULL,
+      text TEXT NOT NULL,
+      probability REAL NOT NULL,
+      UNIQUE(project_id, segment_index, word_index)
+    );
     CREATE TABLE clips (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
@@ -55,11 +66,36 @@ function createTestDatabase() {
       subtitle_y REAL NOT NULL DEFAULT 72,
       subtitle_scale REAL NOT NULL DEFAULT 1,
       subtitle_align TEXT NOT NULL DEFAULT 'center',
+      template_id TEXT NOT NULL DEFAULT 'clean',
+      accent_color TEXT NOT NULL DEFAULT '#8f7cff',
+      captions_enabled INTEGER NOT NULL DEFAULT 1,
+      opening_caption_enabled INTEGER NOT NULL DEFAULT 1,
+      image_settings_json TEXT NOT NULL DEFAULT '{"brightness":100,"exposure":0,"contrast":100,"saturation":100,"temperature":0,"tint":0,"sharpness":0,"blur":0,"vignette":0,"opacity":100,"rotation":0,"flipHorizontal":false,"zoom":1,"positionX":50,"positionY":50,"backgroundBlur":42,"backgroundDim":0.28,"backgroundSaturation":0.78}',
+      audio_settings_json TEXT NOT NULL DEFAULT '{"volume":1,"muted":false,"fadeInSeconds":0,"fadeOutSeconds":0,"normalize":false,"noiseReduction":false,"music":null}',
+      subtitle_style_json TEXT NOT NULL DEFAULT '{"fontFamily":"Arial","fontWeight":900,"textColor":"#ffffff","activeWordColor":"#ff6b00","backgroundColor":"#000000","backgroundOpacity":0,"outlineColor":"#000000","outlineWidth":4,"shadow":true,"borderRadius":10,"paddingHorizontal":20,"paddingVertical":10,"maxWords":6,"maxLines":2,"animation":"minimal","uppercase":false}',
+      opening_caption_settings_json TEXT NOT NULL DEFAULT '{"enabled":false,"text":"","x":50,"y":22,"scale":1,"color":"#ffffff","backgroundColor":"#000000","backgroundOpacity":0.55,"durationSeconds":3,"animation":"fade"}',
       render_status TEXT NOT NULL DEFAULT 'idle',
       render_progress INTEGER NOT NULL DEFAULT 0,
       render_error TEXT,
       output_file_name TEXT,
-      rendered_at INTEGER
+      rendered_at INTEGER,
+      updated_at INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE TABLE clip_ranges (
+      id TEXT PRIMARY KEY, clip_id TEXT NOT NULL, range_order INTEGER NOT NULL,
+      start_seconds REAL NOT NULL, end_seconds REAL NOT NULL,
+      transition_type TEXT NOT NULL DEFAULT 'hard-cut',
+      transition_duration_seconds REAL NOT NULL DEFAULT 0
+    );
+    CREATE TABLE crop_keyframes (
+      id TEXT PRIMARY KEY, clip_id TEXT NOT NULL, range_id TEXT NOT NULL,
+      source_time_seconds REAL NOT NULL, crop_x REAL NOT NULL, crop_y REAL NOT NULL,
+      zoom REAL NOT NULL, easing TEXT NOT NULL
+    );
+    CREATE TABLE subtitle_keyframes (
+      id TEXT PRIMARY KEY, clip_id TEXT NOT NULL, range_id TEXT NOT NULL,
+      source_time_seconds REAL NOT NULL, subtitle_x REAL NOT NULL, subtitle_y REAL NOT NULL,
+      subtitle_scale REAL NOT NULL, subtitle_align TEXT NOT NULL, transition TEXT NOT NULL
     );
   `);
   return db;
@@ -107,9 +143,29 @@ describe("worker persistence", () => {
     expect(claimNextJob(db)).toBeNull();
     if (!job || job.type !== "transcription")
       throw new Error("Expected transcription job");
-    completeJob(db, job!, "ru", [
-      { segmentIndex: 0, startSeconds: 0, endSeconds: 1.5, text: "Привет" },
-    ]);
+    completeJob(
+      db,
+      job!,
+      "ru",
+      [
+        {
+          segmentIndex: 0,
+          startSeconds: 0,
+          endSeconds: 1.5,
+          text: "Привет",
+        },
+      ],
+      [
+        {
+          segmentIndex: 0,
+          wordIndex: 0,
+          startSeconds: 0,
+          endSeconds: 0.8,
+          text: "Привет",
+          probability: 0.98,
+        },
+      ],
+    );
 
     expect(db.prepare("SELECT status, progress FROM jobs").get()).toEqual({
       status: "completed",
@@ -125,6 +181,9 @@ describe("worker persistence", () => {
       segment_index: 0,
       text: "Привет",
     });
+    expect(
+      db.prepare("SELECT word_index, text FROM transcript_words").get(),
+    ).toEqual({ word_index: 0, text: "Привет" });
   });
 
   it("recovers interrupted render clips as retryable failures", () => {

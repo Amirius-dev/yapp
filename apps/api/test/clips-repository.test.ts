@@ -2,25 +2,29 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   clipUpdateSchema,
   subtitleSafeWidthPercent,
-  type AiResponse,
+  type AiResponseV2,
 } from "@studio/contracts";
 import { createDatabase } from "../src/db/client.js";
 import { createClipsRepository } from "../src/repositories/clips.js";
 
 const projectId = "11111111-1111-4111-8111-111111111111";
 
-function response(count: number): AiResponse {
+function response(count: number): AiResponseV2 {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     projectId,
     clips: Array.from({ length: count }, (_, index) => ({
       title: `Clip ${index + 1}`,
-      start: index * 40,
-      end: index * 40 + 20,
+      ranges: [
+        {
+          start: index * 40,
+          end: index * 40 + 20,
+          segmentIds: [index * 2],
+        },
+      ],
       hookScore: 8,
       reason: "Test reason",
       openingCaption: "Test hook",
-      segmentIds: [index * 2],
     })),
   };
 }
@@ -52,8 +56,21 @@ describe("clips repository", () => {
         crop_y REAL NOT NULL DEFAULT 50, zoom REAL NOT NULL DEFAULT 1,
         subtitle_x REAL NOT NULL DEFAULT 50, subtitle_y REAL NOT NULL DEFAULT 72,
         subtitle_scale REAL NOT NULL DEFAULT 1, subtitle_align TEXT NOT NULL DEFAULT 'center',
+        template_id TEXT NOT NULL DEFAULT 'clean', accent_color TEXT NOT NULL DEFAULT '#8f7cff',
+        captions_enabled INTEGER NOT NULL DEFAULT 1, opening_caption_enabled INTEGER NOT NULL DEFAULT 1,
+        image_settings_json TEXT NOT NULL DEFAULT '{"brightness":100,"exposure":0,"contrast":100,"saturation":100,"temperature":0,"tint":0,"sharpness":0,"blur":0,"vignette":0,"opacity":100,"rotation":0,"flipHorizontal":false,"zoom":1,"positionX":50,"positionY":50,"backgroundBlur":42,"backgroundDim":0.28,"backgroundSaturation":0.78}',
+        audio_settings_json TEXT NOT NULL DEFAULT '{"volume":1,"muted":false,"fadeInSeconds":0,"fadeOutSeconds":0,"normalize":false,"noiseReduction":false,"music":null}',
+        subtitle_style_json TEXT NOT NULL DEFAULT '{"fontFamily":"Arial","fontWeight":900,"textColor":"#ffffff","activeWordColor":"#ff6b00","backgroundColor":"#000000","backgroundOpacity":0,"outlineColor":"#000000","outlineWidth":4,"shadow":true,"borderRadius":10,"paddingHorizontal":20,"paddingVertical":10,"maxWords":6,"maxLines":2,"animation":"minimal","uppercase":false}',
+        opening_caption_settings_json TEXT NOT NULL DEFAULT '{"enabled":false,"text":"","x":50,"y":22,"scale":1,"color":"#ffffff","backgroundColor":"#000000","backgroundOpacity":0.55,"durationSeconds":3,"animation":"fade"}',
         render_status TEXT NOT NULL DEFAULT 'idle', render_progress INTEGER NOT NULL DEFAULT 0,
         render_error TEXT, output_file_name TEXT, rendered_at INTEGER
+      );
+      CREATE TABLE clip_ranges (
+        id TEXT PRIMARY KEY, clip_id TEXT NOT NULL, range_order INTEGER NOT NULL,
+        start_seconds REAL NOT NULL, end_seconds REAL NOT NULL,
+        transition_type TEXT NOT NULL DEFAULT 'hard-cut',
+        transition_duration_seconds REAL NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       );
     `);
     database.sqlite

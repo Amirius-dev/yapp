@@ -34,9 +34,75 @@ describe("validateClipsContent", () => {
     const result = validateClipsContent(response([validClip]), context);
     expect(result.valid).toBe(true);
     expect(result.preview?.clips).toHaveLength(1);
+    expect(result.preview?.schemaVersion).toBe(2);
+    expect(result.preview?.clips[0]?.ranges).toEqual([
+      { start: 0, end: 40, segmentIds: [0, 1] },
+    ]);
     expect(result.warnings.map((item) => item.code)).toContain(
       "clip_count_outside_recommended",
     );
+  });
+
+  it("accepts schema v2 multi-range clips and sums their duration", () => {
+    const result = validateClipsContent(
+      JSON.stringify({
+        schemaVersion: 2,
+        projectId: context.projectId,
+        clips: [
+          {
+            title: "Multi range",
+            ranges: [
+              { start: 0, end: 10, segmentIds: [0] },
+              { start: 40, end: 60, segmentIds: [2] },
+            ],
+            hookScore: 9,
+            reason: "One coherent thought",
+            openingCaption: "Combined idea",
+          },
+        ],
+      }),
+      context,
+    );
+    expect(result.valid).toBe(true);
+    expect(result.preview?.clips[0]?.ranges).toHaveLength(2);
+    expect(result.errors.some((item) => item.code === "invalid_duration")).toBe(
+      false,
+    );
+  });
+
+  it("accepts schema v2 with one range and three non-adjacent ranges", () => {
+    const clips = [
+      {
+        title: "Single range",
+        ranges: [{ start: 0, end: 20, segmentIds: [0] }],
+        hookScore: 8,
+        reason: "Already complete",
+        openingCaption: "One idea",
+      },
+      {
+        title: "Three ranges",
+        ranges: [
+          { start: 0, end: 6, segmentIds: [0] },
+          { start: 20, end: 28, segmentIds: [1] },
+          { start: 40, end: 48, segmentIds: [2] },
+        ],
+        hookScore: 9,
+        reason: "Setup, evidence, conclusion",
+        openingCaption: "Three moments",
+      },
+    ];
+    const result = validateClipsContent(
+      JSON.stringify({
+        schemaVersion: 2,
+        projectId: context.projectId,
+        clips,
+      }),
+      context,
+    );
+    expect(result.valid).toBe(true);
+    expect(result.preview?.clips.map((clip) => clip.ranges.length)).toEqual([
+      1, 3,
+    ]);
   });
 
   it("rejects invalid JSON and empty clips", () => {

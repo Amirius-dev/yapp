@@ -16,3 +16,6 @@ export const whisperModel = process.env.WHISPER_MODEL ?? "small";
 export const maxUploadBytes = Number(
   process.env.MAX_UPLOAD_BYTES ?? 10 * 1024 ** 3,
 );
+export const maxMusicUploadBytes = Number(
+  process.env.MAX_MUSIC_UPLOAD_BYTES ?? 200 * 1024 ** 2,
+);

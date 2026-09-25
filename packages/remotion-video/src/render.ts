@@ -14,6 +14,18 @@ export async function renderVerticalClip(options: {
   const serveUrl = await bundle({
     entryPoint: fileURLToPath(new URL("./remotion-entry.tsx", import.meta.url)),
     publicDir: options.publicDir,
+    webpackOverride: (configuration) => ({
+      ...configuration,
+      resolve: {
+        ...configuration.resolve,
+        extensionAlias: {
+          ...configuration.resolve?.extensionAlias,
+          ".js": [".ts", ".tsx", ".js"],
+          ".mjs": [".mts", ".mjs"],
+          ".cjs": [".cts", ".cjs"],
+        },
+      },
+    }),
   });
   const composition = await selectComposition({
     serveUrl,

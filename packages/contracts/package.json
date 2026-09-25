@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./timeline": "./src/timeline.ts",
+    "./templates": "./src/templates.ts"
   },
   "scripts": {
     "lint": "eslint src --max-warnings=0",

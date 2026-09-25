@@ -6,6 +6,7 @@ import {
   FolderKanban,
   Home,
   Menu,
+  Settings2,
   X,
 } from "lucide-react";
 import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
@@ -152,7 +153,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <div>
             <strong>Cutwise</strong>
-            <small>local video studio</small>
+            <small>Video Studio</small>
           </div>
         </div>
         <button
@@ -162,6 +163,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           <X />
         </button>
+        <span className="nav-label">Рабочее пространство</span>
         <nav className="main-nav">
           {navigation.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} onClick={() => setOpen(false)}>
@@ -171,15 +173,17 @@ export function AppShell({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="local-card">
-          <div className="local-dot" />
-          <div>
-            <strong>Всё остаётся локально</strong>
-            <p>Без API-ключей и облачной загрузки.</p>
-          </div>
-        </div>
         <div className="sidebar-footer">
-          <span>Локальный видеомонтаж</span>
+          <div className="privacy-status">
+            <span className="local-dot" />
+            <span>
+              <strong>Локальная обработка</strong>
+              <small>Данные остаются на Mac</small>
+            </span>
+          </div>
+          <span className="sidebar-version">
+            <Settings2 /> Cutwise Studio
+          </span>
         </div>
       </aside>
       {open && (

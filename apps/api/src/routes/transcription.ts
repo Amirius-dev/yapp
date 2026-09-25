@@ -19,6 +19,16 @@ export async function registerTranscriptionRoutes(
     return reply.status(result.created ? 202 : 200).send(result.job);
   });
 
+  app.post(
+    "/api/projects/:id/transcription/regenerate",
+    async (request, reply) => {
+      const result = await repository.enqueue(projectIdFrom(request.params), {
+        regenerate: true,
+      });
+      return reply.status(result.created ? 202 : 200).send(result.job);
+    },
+  );
+
   app.get("/api/projects/:id/transcript", async (request) =>
     repository.getTranscript(projectIdFrom(request.params)),
   );

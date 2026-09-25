@@ -49,6 +49,11 @@ describe("transcription repository", () => {
         end_seconds REAL NOT NULL,
         text TEXT NOT NULL
       );
+      CREATE TABLE transcript_words (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL, segment_index INTEGER NOT NULL,
+        word_index INTEGER NOT NULL, start_seconds REAL NOT NULL, end_seconds REAL NOT NULL,
+        text TEXT NOT NULL, probability REAL NOT NULL
+      );
     `);
   });
 
@@ -81,5 +86,35 @@ describe("transcription repository", () => {
     expect(
       database.sqlite.prepare("SELECT COUNT(*) AS count FROM jobs").get(),
     ).toEqual({ count: 1 });
+  });
+
+  it("keeps an existing transcript while regeneration is queued", async () => {
+    const projectId = randomUUID();
+    const now = Date.now();
+    database.sqlite
+      .prepare(
+        `INSERT INTO projects
+         (id, name, status, source_file_path, duration_seconds, created_at, updated_at)
+         VALUES (?, 'Existing', 'ready_for_ai', 'projects/source.mp4', 20, ?, ?)`,
+      )
+      .run(projectId, now, now);
+    database.sqlite
+      .prepare(
+        `INSERT INTO transcript_segments
+         (id, project_id, segment_index, start_seconds, end_seconds, text)
+         VALUES (?, ?, 0, 0, 10, 'Old transcript')`,
+      )
+      .run(randomUUID(), projectId);
+    const repository = createTranscriptionRepository(database.db, "tiny");
+    const result = await repository.enqueue(projectId, { regenerate: true });
+    expect(result.created).toBe(true);
+    expect((await repository.getTranscript(projectId)).segments[0]?.text).toBe(
+      "Old transcript",
+    );
+    expect(
+      database.sqlite
+        .prepare("SELECT status FROM projects WHERE id = ?")
+        .get(projectId),
+    ).toEqual({ status: "ready_for_ai" });
   });
 });

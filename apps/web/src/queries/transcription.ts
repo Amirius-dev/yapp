@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getProjectJobs,
   getTranscript,
+  regenerateTranscription,
   startTranscription,
 } from "../api/transcription";
 import { projectKeys } from "./projects";
@@ -41,6 +42,21 @@ export function useStartTranscriptionMutation(projectId: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: () => startTranscription(projectId),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: transcriptionKeys.jobs(projectId),
+      });
+      void client.invalidateQueries({
+        queryKey: projectKeys.detail(projectId),
+      });
+    },
+  });
+}
+
+export function useRegenerateTranscriptionMutation(projectId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => regenerateTranscription(projectId),
     onSuccess: () => {
       void client.invalidateQueries({
         queryKey: transcriptionKeys.jobs(projectId),

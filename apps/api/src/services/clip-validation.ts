@@ -1,6 +1,6 @@
 import {
   aiResponseSchema,
-  type AiResponse,
+  type AiResponseV2,
   type ClipsValidationResult,
   type ValidationIssue,
 } from "@studio/contracts";
@@ -107,7 +107,26 @@ export function validateClipsContent(
     };
   }
 
-  const preview: AiResponse = parsed.data;
+  const preview: AiResponseV2 =
+    parsed.data.schemaVersion === 2
+      ? parsed.data
+      : {
+          schemaVersion: 2,
+          projectId: parsed.data.projectId,
+          clips: parsed.data.clips.map((clip) => ({
+            title: clip.title,
+            ranges: [
+              {
+                start: clip.start,
+                end: clip.end,
+                segmentIds: clip.segmentIds,
+              },
+            ],
+            hookScore: clip.hookScore,
+            reason: clip.reason,
+            openingCaption: clip.openingCaption,
+          })),
+        };
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
   const segmentMap = new Map(
@@ -139,34 +158,94 @@ export function validateClipsContent(
 
   preview.clips.forEach((clip, clipIndex) => {
     const path = `clips.${clipIndex}`;
-    const duration = clip.end - clip.start;
-    if (clip.start < 0)
-      errors.push(
-        issue(
-          "negative_start",
-          `${path}.start`,
-          "Начало не может быть меньше нуля.",
-          clipIndex,
-        ),
-      );
-    if (clip.end <= clip.start)
-      errors.push(
-        issue(
-          "invalid_range",
-          `${path}.end`,
-          "Конец должен быть позже начала.",
-          clipIndex,
-        ),
-      );
-    if (clip.end > context.durationSeconds)
-      errors.push(
-        issue(
-          "outside_video",
-          `${path}.end`,
-          `Конец выходит за длительность видео (${context.durationSeconds.toFixed(2)} сек.).`,
-          clipIndex,
-        ),
-      );
+    const duration = clip.ranges.reduce(
+      (total, range) => total + range.end - range.start,
+      0,
+    );
+    const seenRanges = new Set<string>();
+    clip.ranges.forEach((range, rangeIndex) => {
+      const rangePath = `${path}.ranges.${rangeIndex}`;
+      if (range.start < 0)
+        errors.push(
+          issue(
+            "negative_start",
+            `${rangePath}.start`,
+            "Начало не может быть меньше нуля.",
+            clipIndex,
+          ),
+        );
+      if (range.end <= range.start)
+        errors.push(
+          issue(
+            "invalid_range",
+            `${rangePath}.end`,
+            "Конец должен быть позже начала.",
+            clipIndex,
+          ),
+        );
+      if (range.end - range.start < 1)
+        errors.push(
+          issue(
+            "range_too_short",
+            rangePath,
+            "Каждый range должен длиться минимум 1 секунду.",
+            clipIndex,
+          ),
+        );
+      if (range.end > context.durationSeconds)
+        errors.push(
+          issue(
+            "outside_video",
+            `${rangePath}.end`,
+            `Конец выходит за длительность видео (${context.durationSeconds.toFixed(2)} сек.).`,
+            clipIndex,
+          ),
+        );
+      const rangeKey = `${range.start}:${range.end}`;
+      if (seenRanges.has(rangeKey))
+        errors.push(
+          issue(
+            "duplicate_range",
+            rangePath,
+            "Одинаковые ranges внутри одного clip запрещены.",
+            clipIndex,
+          ),
+        );
+      seenRanges.add(rangeKey);
+
+      const uniqueIds = new Set(range.segmentIds);
+      if (uniqueIds.size !== range.segmentIds.length)
+        errors.push(
+          issue(
+            "duplicate_segment_ids",
+            `${rangePath}.segmentIds`,
+            "segmentIds содержит дубликаты.",
+            clipIndex,
+          ),
+        );
+      const unknown = [...uniqueIds].filter((id) => !segmentMap.has(id));
+      if (unknown.length)
+        errors.push(
+          issue(
+            "unknown_segment_ids",
+            `${rangePath}.segmentIds`,
+            `Неизвестные segmentIds: ${unknown.join(", ")}.`,
+            clipIndex,
+          ),
+        );
+      const selected = [...uniqueIds]
+        .map((id) => segmentMap.get(id))
+        .filter((segment): segment is ValidationSegment => Boolean(segment));
+      if (!unknown.length && !hasFullCoverage(range.start, range.end, selected))
+        warnings.push(
+          issue(
+            "segments_do_not_cover_range",
+            `${rangePath}.segmentIds`,
+            "Указанные сегменты не полностью покрывают выбранный range.",
+            clipIndex,
+          ),
+        );
+    });
     if (duration < 15 || duration > 90)
       errors.push(
         issue(
@@ -186,38 +265,6 @@ export function validateClipsContent(
         ),
       );
 
-    const uniqueIds = new Set(clip.segmentIds);
-    if (uniqueIds.size !== clip.segmentIds.length)
-      errors.push(
-        issue(
-          "duplicate_segment_ids",
-          `${path}.segmentIds`,
-          "segmentIds содержит дубликаты.",
-          clipIndex,
-        ),
-      );
-    const unknown = [...uniqueIds].filter((id) => !segmentMap.has(id));
-    if (unknown.length)
-      errors.push(
-        issue(
-          "unknown_segment_ids",
-          `${path}.segmentIds`,
-          `Неизвестные segmentIds: ${unknown.join(", ")}.`,
-          clipIndex,
-        ),
-      );
-    const selected = [...uniqueIds]
-      .map((id) => segmentMap.get(id))
-      .filter((segment): segment is ValidationSegment => Boolean(segment));
-    if (!unknown.length && !hasFullCoverage(clip.start, clip.end, selected))
-      warnings.push(
-        issue(
-          "segments_do_not_cover_range",
-          `${path}.segmentIds`,
-          "Указанные сегменты не полностью покрывают выбранный диапазон.",
-          clipIndex,
-        ),
-      );
     if (wordCount(clip.openingCaption) > 12)
       warnings.push(
         issue(
@@ -233,7 +280,10 @@ export function validateClipsContent(
     for (let right = left + 1; right < preview.clips.length; right += 1) {
       const a = preview.clips[left]!;
       const b = preview.clips[right]!;
-      if (a.start === b.start && a.end === b.end) {
+      if (
+        JSON.stringify(a.ranges.map(({ start, end }) => ({ start, end }))) ===
+        JSON.stringify(b.ranges.map(({ start, end }) => ({ start, end })))
+      ) {
         errors.push(
           issue(
             "duplicate_range",
@@ -245,11 +295,25 @@ export function validateClipsContent(
         );
         continue;
       }
-      const overlap = Math.max(
+      const overlap = a.ranges.reduce(
+        (total, leftRange) =>
+          total +
+          b.ranges.reduce(
+            (rangeTotal, rightRange) =>
+              rangeTotal +
+              Math.max(
+                0,
+                Math.min(leftRange.end, rightRange.end) -
+                  Math.max(leftRange.start, rightRange.start),
+              ),
+            0,
+          ),
         0,
-        Math.min(a.end, b.end) - Math.max(a.start, b.start),
       );
-      const shorter = Math.min(a.end - a.start, b.end - b.start);
+      const shorter = Math.min(
+        a.ranges.reduce((sum, range) => sum + range.end - range.start, 0),
+        b.ranges.reduce((sum, range) => sum + range.end - range.start, 0),
+      );
       if (shorter > 0 && overlap / shorter >= 0.5)
         warnings.push(
           issue(

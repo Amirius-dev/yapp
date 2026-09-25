@@ -28,6 +28,22 @@ describe("parseRunnerLine", () => {
     );
   });
 
+  it("parses a word timestamp event", () => {
+    expect(
+      parseRunnerLine(
+        JSON.stringify({
+          type: "word",
+          segmentIndex: 12,
+          wordIndex: 3,
+          start: 42.15,
+          end: 42.61,
+          text: "discipline",
+          probability: 0.96,
+        }),
+      ),
+    ).toMatchObject({ type: "word", wordIndex: 3, probability: 0.96 });
+  });
+
   it("rejects invalid progress", () => {
     expect(() =>
       parseRunnerLine(JSON.stringify({ type: "progress", progress: 101 })),

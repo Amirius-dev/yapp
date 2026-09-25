@@ -31,6 +31,16 @@ export async function startTranscription(projectId: string): Promise<JobDto> {
   return read(response, (body) => jobSchema.parse(body));
 }
 
+export async function regenerateTranscription(
+  projectId: string,
+): Promise<JobDto> {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/transcription/regenerate`,
+    { method: "POST" },
+  );
+  return read(response, (body) => jobSchema.parse(body));
+}
+
 export async function getProjectJobs(projectId: string): Promise<JobDto[]> {
   const response = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/jobs`,

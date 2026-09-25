@@ -7,7 +7,19 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import type { JobStatus, ProjectMode, ProjectStatus } from "@studio/contracts";
+import type {
+  JobStatus,
+  ProjectMode,
+  ProjectStatus,
+  TemplateId,
+} from "@studio/contracts";
+import {
+  DEFAULT_AUDIO_SETTINGS,
+  DEFAULT_IMAGE_ADJUSTMENTS,
+  DEFAULT_OPENING_CAPTION_SETTINGS,
+  DEFAULT_SUBTITLE_STYLE,
+  type RangeTransition,
+} from "@studio/contracts";
 
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
@@ -76,6 +88,33 @@ export const transcriptSegments = sqliteTable(
   ],
 );
 
+export const transcriptWords = sqliteTable(
+  "transcript_words",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    segmentIndex: integer("segment_index").notNull(),
+    wordIndex: integer("word_index").notNull(),
+    startSeconds: real("start_seconds").notNull(),
+    endSeconds: real("end_seconds").notNull(),
+    text: text("text").notNull(),
+    probability: real("probability").notNull(),
+  },
+  (table) => [
+    uniqueIndex("transcript_words_project_segment_word_unique").on(
+      table.projectId,
+      table.segmentIndex,
+      table.wordIndex,
+    ),
+    index("transcript_words_project_time_idx").on(
+      table.projectId,
+      table.startSeconds,
+    ),
+  ],
+);
+
 export const clips = sqliteTable(
   "clips",
   {
@@ -105,6 +144,31 @@ export const clips = sqliteTable(
       .$type<"left" | "center" | "right">()
       .notNull()
       .default("center"),
+    templateId: text("template_id")
+      .$type<TemplateId>()
+      .notNull()
+      .default("clean"),
+    accentColor: text("accent_color").notNull().default("#8f7cff"),
+    captionsEnabled: integer("captions_enabled", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    openingCaptionEnabled: integer("opening_caption_enabled", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(true),
+    imageSettingsJson: text("image_settings_json")
+      .notNull()
+      .default(JSON.stringify(DEFAULT_IMAGE_ADJUSTMENTS)),
+    audioSettingsJson: text("audio_settings_json")
+      .notNull()
+      .default(JSON.stringify(DEFAULT_AUDIO_SETTINGS)),
+    subtitleStyleJson: text("subtitle_style_json")
+      .notNull()
+      .default(JSON.stringify(DEFAULT_SUBTITLE_STYLE)),
+    openingCaptionSettingsJson: text("opening_caption_settings_json")
+      .notNull()
+      .default(JSON.stringify(DEFAULT_OPENING_CAPTION_SETTINGS)),
     renderStatus: text("render_status")
       .$type<"idle" | "queued" | "rendering" | "completed" | "failed">()
       .notNull()
@@ -119,6 +183,99 @@ export const clips = sqliteTable(
   (table) => [index("clips_project_id_idx").on(table.projectId)],
 );
 
+export const clipRanges = sqliteTable(
+  "clip_ranges",
+  {
+    id: text("id").primaryKey(),
+    clipId: text("clip_id")
+      .notNull()
+      .references(() => clips.id, { onDelete: "cascade" }),
+    rangeOrder: integer("range_order").notNull(),
+    startSeconds: real("start_seconds").notNull(),
+    endSeconds: real("end_seconds").notNull(),
+    transitionType: text("transition_type")
+      .$type<RangeTransition["type"]>()
+      .notNull()
+      .default("hard-cut"),
+    transitionDurationSeconds: real("transition_duration_seconds")
+      .notNull()
+      .default(0),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("clip_ranges_clip_order_unique").on(
+      table.clipId,
+      table.rangeOrder,
+    ),
+    index("clip_ranges_clip_id_idx").on(table.clipId),
+  ],
+);
+
+export const editorPresets = sqliteTable("editor_presets", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  settingsJson: text("settings_json").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const cropKeyframes = sqliteTable(
+  "crop_keyframes",
+  {
+    id: text("id").primaryKey(),
+    clipId: text("clip_id")
+      .notNull()
+      .references(() => clips.id, { onDelete: "cascade" }),
+    rangeId: text("range_id")
+      .notNull()
+      .references(() => clipRanges.id, { onDelete: "cascade" }),
+    sourceTimeSeconds: real("source_time_seconds").notNull(),
+    cropX: real("crop_x").notNull(),
+    cropY: real("crop_y").notNull(),
+    zoom: real("zoom").notNull(),
+    easing: text("easing")
+      .$type<"linear" | "ease-in-out" | "hold">()
+      .notNull()
+      .default("linear"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("crop_keyframes_clip_range_idx").on(table.clipId, table.rangeId),
+  ],
+);
+
+export const subtitleKeyframes = sqliteTable(
+  "subtitle_keyframes",
+  {
+    id: text("id").primaryKey(),
+    clipId: text("clip_id")
+      .notNull()
+      .references(() => clips.id, { onDelete: "cascade" }),
+    rangeId: text("range_id")
+      .notNull()
+      .references(() => clipRanges.id, { onDelete: "cascade" }),
+    sourceTimeSeconds: real("source_time_seconds").notNull(),
+    subtitleX: real("subtitle_x").notNull(),
+    subtitleY: real("subtitle_y").notNull(),
+    subtitleScale: real("subtitle_scale").notNull(),
+    subtitleAlign: text("subtitle_align")
+      .$type<"left" | "center" | "right">()
+      .notNull(),
+    transition: text("transition")
+      .$type<"hold" | "smooth">()
+      .notNull()
+      .default("hold"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("subtitle_keyframes_clip_range_idx").on(table.clipId, table.rangeId),
+  ],
+);
+
 export type ProjectRow = typeof projects.$inferSelect;
 export type JobRow = typeof jobs.$inferSelect;
 export type ClipRow = typeof clips.$inferSelect;
+export type ClipRangeRow = typeof clipRanges.$inferSelect;

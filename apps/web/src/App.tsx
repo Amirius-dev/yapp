@@ -11,6 +11,7 @@ import {
   RenderPage,
   ResultsPage,
   TranscriptPage,
+  TimelineEditorPage,
 } from "./pages";
 
 export function App() {
@@ -24,6 +25,10 @@ export function App() {
         <Route path="/projects/:id/ai-export" element={<AiExportPage />} />
         <Route path="/projects/:id/ai-import" element={<AiImportPage />} />
         <Route path="/projects/:id/clips" element={<ClipsPage />} />
+        <Route
+          path="/projects/:id/clips/:clipId/editor"
+          element={<TimelineEditorPage />}
+        />
         <Route path="/projects/:id/render" element={<RenderPage />} />
         <Route path="/projects/:id/results" element={<ResultsPage />} />
         <Route path="*" element={<NotFoundPage />} />

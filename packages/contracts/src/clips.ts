@@ -1,4 +1,12 @@
 import { z } from "zod";
+import { accentColorSchema, templateIdSchema } from "./templates.js";
+import {
+  audioSettingsSchema,
+  imageAdjustmentsSchema,
+  openingCaptionSettingsSchema,
+  subtitleStyleSchema,
+} from "./editor-settings.js";
+import { rangeTransitionSchema } from "./timeline.js";
 
 export const SUBTITLE_POSITION = {
   minX: 15,
@@ -36,7 +44,7 @@ export const aiPackageRequestSchema = z
 
 export const aiPackageMetadataSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     projectId: z.uuid(),
     projectName: z.string().min(1),
     language: z.string().nullable(),
@@ -71,13 +79,46 @@ export const clipSuggestionSchema = z
   })
   .strict();
 
-export const aiResponseSchema = z
+export const clipRangeSuggestionSchema = z
+  .object({
+    start: z.number().finite(),
+    end: z.number().finite(),
+    segmentIds: z.array(z.number().int().nonnegative()).min(1),
+  })
+  .strict();
+
+export const clipSuggestionV2Schema = z
+  .object({
+    title: z.string().trim().min(1).max(160),
+    ranges: z.array(clipRangeSuggestionSchema).min(1),
+    hookScore: z.number().int().min(1).max(10),
+    reason: z.string().trim().min(1).max(1000),
+    openingCaption: z.string().trim().min(1).max(300),
+  })
+  .strict();
+
+export const aiResponseV1Schema = z
   .object({
     schemaVersion: z.literal(1),
     projectId: z.string().min(1),
     clips: z.array(clipSuggestionSchema),
   })
   .strict();
+
+export const aiResponseV2Schema = z
+  .object({
+    schemaVersion: z.literal(2),
+    projectId: z.string().min(1),
+    clips: z.array(clipSuggestionV2Schema),
+  })
+  .strict();
+
+export const aiResponseSchema = z.discriminatedUnion("schemaVersion", [
+  aiResponseV1Schema,
+  aiResponseV2Schema,
+]);
+
+export const normalizedAiResponseSchema = aiResponseV2Schema;
 
 export const clipsImportSchema = z
   .object({ content: z.string().min(1, "Вставьте JSON от AI.") })
@@ -113,6 +154,10 @@ export const clipUpdateSchema = z
       .max(SUBTITLE_POSITION.maxScale)
       .optional(),
     subtitleAlign: subtitleAlignSchema.optional(),
+    image: imageAdjustmentsSchema.optional(),
+    audio: audioSettingsSchema.optional(),
+    subtitleStyle: subtitleStyleSchema.optional(),
+    openingCaptionSettings: openingCaptionSettingsSchema.optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
@@ -132,7 +177,7 @@ export const validationIssueSchema = z
 export const clipsValidationResultSchema = z
   .object({
     valid: z.boolean(),
-    preview: aiResponseSchema.nullable(),
+    preview: normalizedAiResponseSchema.nullable(),
     errors: z.array(validationIssueSchema),
     warnings: z.array(validationIssueSchema),
   })
@@ -149,6 +194,16 @@ export const clipSchema = z
     reason: z.string(),
     openingCaption: z.string(),
     segmentIds: z.array(z.number().int().nonnegative()),
+    ranges: z.array(
+      z.object({
+        id: z.uuid(),
+        rangeOrder: z.number().int().nonnegative(),
+        start: z.number().nonnegative(),
+        end: z.number().positive(),
+        transition: rangeTransitionSchema,
+        segmentIds: z.array(z.number().int().nonnegative()),
+      }),
+    ),
     enabled: z.boolean(),
     cropMode: z.enum(["fill", "fit"]),
     cropX: z.number().min(0).max(100),
@@ -167,6 +222,14 @@ export const clipSchema = z
       .min(SUBTITLE_POSITION.minScale)
       .max(SUBTITLE_POSITION.maxScale),
     subtitleAlign: subtitleAlignSchema,
+    templateId: templateIdSchema,
+    accentColor: accentColorSchema,
+    captionsEnabled: z.boolean(),
+    openingCaptionEnabled: z.boolean(),
+    image: imageAdjustmentsSchema,
+    audio: audioSettingsSchema,
+    subtitleStyle: subtitleStyleSchema,
+    openingCaptionSettings: openingCaptionSettingsSchema,
     renderStatus: z.enum([
       "idle",
       "queued",
@@ -190,6 +253,7 @@ export type AiPackageMetadata = z.infer<typeof aiPackageMetadataSchema>;
 export type AiPackagePrompt = z.infer<typeof aiPackagePromptSchema>;
 export type ClipSuggestion = z.infer<typeof clipSuggestionSchema>;
 export type AiResponse = z.infer<typeof aiResponseSchema>;
+export type AiResponseV2 = z.infer<typeof aiResponseV2Schema>;
 export type ClipsImportInput = z.infer<typeof clipsImportSchema>;
 export type ClipUpdateInput = z.infer<typeof clipUpdateSchema>;
 export type ValidationIssue = z.infer<typeof validationIssueSchema>;

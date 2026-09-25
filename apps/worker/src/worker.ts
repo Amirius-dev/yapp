@@ -63,7 +63,7 @@ while (!stopping) {
     const result = await runTranscription(job.sourcePath, (progress) =>
       updateProgress(db, job.id, progress),
     );
-    completeJob(db, job, result.language, result.segments);
+    completeJob(db, job, result.language, result.segments, result.words);
     console.log(
       `Completed transcription job ${job.id} (${result.segments.length} segments).`,
     );

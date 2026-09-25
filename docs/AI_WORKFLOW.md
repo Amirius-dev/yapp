@@ -48,7 +48,7 @@ Selection criteria:
 
 For each clip include:
 - title;
-- exact start and end seconds from the transcript;
+- one or more exact ranges from the transcript, in output order;
 - hook score from 1 to 10;
 - one-sentence reason;
 - opening caption of at most 12 words;
@@ -57,16 +57,50 @@ For each clip include:
 Return valid JSON only. Follow clips.schema.json. Do not include Markdown fences or commentary.
 ```
 
+The current export requests `schemaVersion: 2`:
+
+```json
+{
+  "schemaVersion": 2,
+  "projectId": "project-uuid",
+  "clips": [
+    {
+      "title": "Example",
+      "ranges": [
+        { "start": 10, "end": 15, "segmentIds": [2, 3] },
+        { "start": 30, "end": 45, "segmentIds": [8, 9] }
+      ],
+      "hookScore": 9,
+      "reason": "One coherent idea",
+      "openingCaption": "A short hook"
+    }
+  ]
+}
+```
+
+Multiple ranges are optional and should only be used when they form one clear
+thought. The importer still accepts `schemaVersion: 1` and normalizes its
+`start`/`end` pair to one range.
+
+The order in the `ranges` array is the final storytelling order. Every range
+must contain a natural phrase or a complete part of speech. A model may search
+the entire source and join distant moments, for example `10–18`, `240–252` and
+`500–510`, but it must not cut speech into individual words, invent text,
+segment IDs or timestamps, or add jump cuts without a clear narrative reason.
+Use one range when the continuous source moment already works. Total duration
+is the sum of range durations (minus explicitly selected transition overlaps),
+never the span from the first start to the last end.
+
 ## Import validation
 
 Reject the entire import when JSON cannot be parsed or the root format is invalid. For individual clips, report field-level errors and allow the user to fix or remove them.
 
 Validation rules:
 
-- `start >= 0`;
-- `end <= project.durationSeconds`;
-- `end > start`;
-- duration between 15 and 90 seconds;
+- every range has `start >= 0` and lasts at least one second;
+- every range has `end <= project.durationSeconds` and `end > start`;
+- duplicate ranges are rejected;
+- total duration (the sum of ranges) is between 15 and 90 seconds;
 - hook score is an integer from 1 to 10;
 - title and reason are not empty;
 - referenced segment IDs exist;
