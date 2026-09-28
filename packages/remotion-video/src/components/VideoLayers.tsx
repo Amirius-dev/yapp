@@ -37,7 +37,9 @@ export function VideoLayers({
     cropX: number;
     cropY: number;
     zoom: number;
-    easing: "linear" | "ease-in-out" | "hold";
+    rotation?: number;
+    easing:
+      "linear" | "ease-in" | "ease-out" | "ease-in-out" | "smooth" | "hold";
   }>;
   image: ImageAdjustments;
 }) {
@@ -54,7 +56,7 @@ export function VideoLayers({
   const src = staticFile(videoFileName);
   const position = `${crop.cropX}% ${crop.cropY}%`;
   const filter = imageFilterCss(image);
-  const transform = imageTransformCss(image, crop.zoom);
+  const transform = `${imageTransformCss(image, crop.zoom)} rotate(${crop.rotation ?? 0}deg)`;
   const vignette = Math.max(0, Math.min(1, image.vignette / 100));
   const effects = (
     <>

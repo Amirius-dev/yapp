@@ -7,6 +7,7 @@ import {
   failRenderClip,
   finalizeRenderJob,
   getRenderClip,
+  isRenderJobActive,
   openWorkerDatabase,
   recoverInterruptedJobs,
   startRenderClip,
@@ -36,20 +37,27 @@ while (!stopping) {
   if (job.type === "render_clips") {
     console.log(`Starting render job ${job.id} (${job.clipIds.length} clips).`);
     for (const [index, clipId] of job.clipIds.entries()) {
+      if (!isRenderJobActive(db, job.id)) break;
       startRenderClip(db, clipId);
       try {
         const clip = getRenderClip(db, job.projectId, clipId);
         const result = await renderClip(job, clip, (progress) =>
           updateRenderProgress(db, job, clipId, index, progress),
         );
+        if (!isRenderJobActive(db, job.id)) break;
         completeRenderClip(db, clipId, result.outputFileName);
         console.log(
           `Rendered clip ${clipId} (${result.cues.length} cues, ${result.metadata.duration.toFixed(2)}s).`,
         );
       } catch (error) {
+        if (!isRenderJobActive(db, job.id)) break;
         console.error(`Render clip ${clipId} failed:`, error);
         failRenderClip(db, clipId, renderErrorMessage(error));
       }
+    }
+    if (!isRenderJobActive(db, job.id)) {
+      console.log(`Render job ${job.id} was reset; worker stopped the queue.`);
+      continue;
     }
     const result = finalizeRenderJob(db, job);
     console.log(

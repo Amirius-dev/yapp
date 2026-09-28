@@ -5,6 +5,10 @@ import {
   editorPresetCreateSchema,
   editorPresetSchema,
   musicAssetSchema,
+  editorDocumentSaveRequestSchema,
+  editorDocumentSnapshotSchema,
+  editorMediaAssetSchema,
+  type EditorDocumentV2,
   type EditorPresetCreateInput,
   type EditorSaveInput,
   type EditorState,
@@ -51,6 +55,80 @@ export async function saveEditorState(
       },
     ),
   );
+}
+
+export async function getEditorDocument(projectId: string, clipId: string) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/clips/${encodeURIComponent(clipId)}/editor-document`,
+  );
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const parsed = apiErrorSchema.safeParse(body);
+    throw new Error(
+      parsed.success
+        ? parsed.data.error
+        : "Не удалось загрузить editor document.",
+    );
+  }
+  return editorDocumentSnapshotSchema.parse(body);
+}
+
+export async function saveEditorDocument(
+  projectId: string,
+  clipId: string,
+  baseRevision: number,
+  document: EditorDocumentV2,
+) {
+  const payload = editorDocumentSaveRequestSchema.parse({
+    baseRevision,
+    document,
+  });
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/clips/${encodeURIComponent(clipId)}/editor-document`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const parsed = apiErrorSchema.safeParse(body);
+    const message = parsed.success
+      ? parsed.data.error
+      : "Не удалось сохранить editor document.";
+    const error = new Error(message) as Error & {
+      code?: string;
+      currentRevision?: number;
+    };
+    if (body && typeof body === "object") {
+      if ("code" in body && typeof body.code === "string")
+        error.code = body.code;
+      if ("currentRevision" in body && typeof body.currentRevision === "number")
+        error.currentRevision = body.currentRevision;
+    }
+    throw error;
+  }
+  return editorDocumentSnapshotSchema.parse(body);
+}
+
+export async function uploadEditorAsset(
+  projectId: string,
+  clipId: string,
+  kind: "music" | "image",
+  file: File,
+) {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/clips/${encodeURIComponent(clipId)}/assets/${kind}`,
+    { method: "POST", body: form },
+  );
+  if (!response.ok)
+    throw new Error(
+      await errorMessage(response, "Не удалось загрузить media asset."),
+    );
+  return editorMediaAssetSchema.parse(await response.json());
 }
 
 export async function uploadEditorMusic(

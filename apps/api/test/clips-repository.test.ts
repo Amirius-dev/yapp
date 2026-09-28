@@ -70,6 +70,7 @@ describe("clips repository", () => {
         start_seconds REAL NOT NULL, end_seconds REAL NOT NULL,
         transition_type TEXT NOT NULL DEFAULT 'hard-cut',
         transition_duration_seconds REAL NOT NULL DEFAULT 0,
+        transition_easing TEXT NOT NULL DEFAULT 'ease-in-out',
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       );
     `);

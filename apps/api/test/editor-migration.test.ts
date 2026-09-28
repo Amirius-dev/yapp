@@ -7,6 +7,7 @@ import {
   DEFAULT_IMAGE_ADJUSTMENTS,
   DEFAULT_OPENING_CAPTION_SETTINGS,
   DEFAULT_SUBTITLE_STYLE,
+  subtitleStyleSchema,
 } from "@studio/contracts";
 
 describe("stage 7 editor migration", () => {
@@ -27,6 +28,12 @@ describe("stage 7 editor migration", () => {
         start_seconds REAL NOT NULL, end_seconds REAL NOT NULL,
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
       );
+      CREATE TABLE crop_keyframes (
+        id TEXT PRIMARY KEY, clip_id TEXT NOT NULL, range_id TEXT NOT NULL,
+        source_time_seconds REAL NOT NULL, crop_x REAL NOT NULL,
+        crop_y REAL NOT NULL, zoom REAL NOT NULL, easing TEXT NOT NULL,
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      );
       INSERT INTO clips VALUES (
         'old-clip', 'project', 'Old clip', 10, 30, 8, 'Reason', 'Hook', '[1]', 1, 1, 1
       );
@@ -44,6 +51,20 @@ describe("stage 7 editor migration", () => {
     for (const statement of sql.split("--> statement-breakpoint")) {
       if (statement.trim()) sqlite.exec(statement);
     }
+    const editorV2Sql = readFileSync(
+      join(process.cwd(), "drizzle", "0010_editor_document_v2.sql"),
+      "utf8",
+    );
+    for (const statement of editorV2Sql.split("--> statement-breakpoint")) {
+      if (statement.trim()) sqlite.exec(statement);
+    }
+    const cropV2Sql = readFileSync(
+      join(process.cwd(), "drizzle", "0011_crop_rotation_and_easing.sql"),
+      "utf8",
+    );
+    for (const statement of cropV2Sql.split("--> statement-breakpoint")) {
+      if (statement.trim()) sqlite.exec(statement);
+    }
     const clip = sqlite
       .prepare(
         `SELECT image_settings_json, audio_settings_json,
@@ -57,9 +78,9 @@ describe("stage 7 editor migration", () => {
     expect(JSON.parse(clip.audio_settings_json!)).toEqual(
       DEFAULT_AUDIO_SETTINGS,
     );
-    expect(JSON.parse(clip.subtitle_style_json!)).toEqual(
-      DEFAULT_SUBTITLE_STYLE,
-    );
+    expect(
+      subtitleStyleSchema.parse(JSON.parse(clip.subtitle_style_json!)),
+    ).toEqual(DEFAULT_SUBTITLE_STYLE);
     expect(JSON.parse(clip.opening_caption_settings_json!)).toEqual(
       DEFAULT_OPENING_CAPTION_SETTINGS,
     );
@@ -73,5 +94,15 @@ describe("stage 7 editor migration", () => {
       transition_type: "hard-cut",
       transition_duration_seconds: 0,
     });
+    expect(
+      sqlite
+        .prepare(
+          "SELECT transition_easing FROM clip_ranges WHERE id = 'old-range'",
+        )
+        .get(),
+    ).toEqual({ transition_easing: "ease-in-out" });
+    expect(sqlite.prepare("SELECT COUNT(*) AS count FROM clips").get()).toEqual(
+      { count: 1 },
+    );
   });
 });

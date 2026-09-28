@@ -6,3 +6,5 @@ export * from "./timeline.js";
 export * from "./templates.js";
 export * from "./editor.js";
 export * from "./editor-settings.js";
+export * from "./editor-document.js";
+export * from "./editor-session.js";

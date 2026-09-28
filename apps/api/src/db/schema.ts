@@ -8,6 +8,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type {
+  EditorEasing,
   JobStatus,
   ProjectMode,
   ProjectStatus,
@@ -200,6 +201,10 @@ export const clipRanges = sqliteTable(
     transitionDurationSeconds: real("transition_duration_seconds")
       .notNull()
       .default(0),
+    transitionEasing: text("transition_easing")
+      .$type<EditorEasing>()
+      .notNull()
+      .default("ease-in-out"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
@@ -220,6 +225,44 @@ export const editorPresets = sqliteTable("editor_presets", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+export const editorDocuments = sqliteTable("editor_documents", {
+  clipId: text("clip_id")
+    .primaryKey()
+    .references(() => clips.id, { onDelete: "cascade" }),
+  schemaVersion: integer("schema_version").notNull().default(2),
+  revision: integer("revision").notNull().default(1),
+  documentJson: text("document_json").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+});
+
+export const editorMediaAssets = sqliteTable(
+  "editor_media_assets",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    clipId: text("clip_id").references(() => clips.id, {
+      onDelete: "set null",
+    }),
+    kind: text("kind").$type<"music" | "image">().notNull(),
+    storedFileName: text("stored_file_name").notNull(),
+    originalName: text("original_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    durationSeconds: real("duration_seconds"),
+    width: integer("width"),
+    height: integer("height"),
+    fileSizeBytes: integer("file_size_bytes").notNull(),
+    waveformJson: text("waveform_json"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("editor_media_assets_project_idx").on(table.projectId),
+    index("editor_media_assets_clip_idx").on(table.clipId),
+  ],
+);
+
 export const cropKeyframes = sqliteTable(
   "crop_keyframes",
   {
@@ -234,10 +277,8 @@ export const cropKeyframes = sqliteTable(
     cropX: real("crop_x").notNull(),
     cropY: real("crop_y").notNull(),
     zoom: real("zoom").notNull(),
-    easing: text("easing")
-      .$type<"linear" | "ease-in-out" | "hold">()
-      .notNull()
-      .default("linear"),
+    rotation: real("rotation").notNull().default(0),
+    easing: text("easing").$type<EditorEasing>().notNull().default("linear"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },

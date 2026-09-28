@@ -1,0 +1,1 @@
+ALTER TABLE `crop_keyframes` ADD `rotation` real DEFAULT 0 NOT NULL;

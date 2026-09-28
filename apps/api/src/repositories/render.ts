@@ -122,6 +122,82 @@ export function createRenderRepository(db: StudioDatabase) {
       });
     },
 
+    recoverActive(projectId: string): JobDto {
+      return db.transaction((tx) => {
+        const [project] = tx
+          .select({ id: projects.id })
+          .from(projects)
+          .where(eq(projects.id, projectId))
+          .limit(1)
+          .all();
+        if (!project) throw new HttpError(404, "Проект не найден.");
+
+        const [active] = tx
+          .select()
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.projectId, projectId),
+              eq(jobs.type, "render_clips"),
+              inArray(jobs.status, ["queued", "running"]),
+            ),
+          )
+          .orderBy(desc(jobs.createdAt))
+          .limit(1)
+          .all();
+        if (!active)
+          throw new HttpError(409, "Активная очередь рендера не найдена.");
+
+        const now = new Date();
+        const message =
+          "Очередь рендера сброшена после остановки worker. Запустите повторный рендер.";
+        const [job] = tx
+          .update(jobs)
+          .set({
+            status: "failed",
+            errorMessage: message,
+            finishedAt: now,
+          })
+          .where(
+            and(
+              eq(jobs.id, active.id),
+              inArray(jobs.status, ["queued", "running"]),
+            ),
+          )
+          .returning()
+          .all();
+        if (!job)
+          throw new HttpError(
+            409,
+            "Состояние очереди уже изменилось. Обновите страницу.",
+          );
+
+        tx.update(clips)
+          .set({
+            renderStatus: "failed",
+            renderProgress: 0,
+            renderError: message,
+          })
+          .where(
+            and(
+              eq(clips.projectId, projectId),
+              inArray(clips.renderStatus, ["queued", "rendering"]),
+            ),
+          )
+          .run();
+        tx.update(projects)
+          .set({
+            status: "reviewing_clips",
+            errorMessage: message,
+            updatedAt: now,
+          })
+          .where(eq(projects.id, projectId))
+          .run();
+
+        return toJobDto(job);
+      });
+    },
+
     async latestJob(projectId: string): Promise<JobDto | null> {
       const [row] = await db
         .select()

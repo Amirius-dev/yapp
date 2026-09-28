@@ -8,6 +8,10 @@ import type {
   SubtitleStyle,
   TranscriptSegmentDto,
   TranscriptWordDto,
+  EditorMask,
+  ImageOverlay,
+  RangeTransition,
+  EditorEasing,
 } from "@studio/contracts";
 import {
   audioSettingsSchema,
@@ -18,6 +22,7 @@ import {
   imageAdjustmentsSchema,
   openingCaptionSettingsSchema,
   subtitleStyleSchema,
+  editorDocumentV2Schema,
 } from "@studio/contracts";
 import { z, type ZodType } from "zod";
 import { dataRoot, databasePath } from "./config.js";
@@ -317,8 +322,9 @@ export type RenderClipData = {
     start: number;
     end: number;
     transition: {
-      type: "hard-cut" | "crossfade" | "dip-to-black";
+      type: RangeTransition["type"];
       durationSeconds: number;
+      easing?: RangeTransition["easing"];
     };
   }>;
   cropKeyframes: Array<{
@@ -327,7 +333,8 @@ export type RenderClipData = {
     cropX: number;
     cropY: number;
     zoom: number;
-    easing: "linear" | "ease-in-out" | "hold";
+    rotation: number;
+    easing: EditorEasing;
   }>;
   subtitleKeyframes: Array<{
     rangeId: string;
@@ -340,6 +347,14 @@ export type RenderClipData = {
   }>;
   segments: Array<{ startSeconds: number; endSeconds: number; text: string }>;
   words: Array<{ startSeconds: number; endSeconds: number; text: string }>;
+  masks: EditorMask[];
+  imageOverlays: ImageOverlay[];
+  imageAssets: Array<{
+    id: string;
+    storedFileName: string;
+    mimeType: string;
+  }>;
+  musicAsset: { storedFileName: string } | null;
 };
 
 function parseSettings<T>(schema: ZodType<T>, value: string, fallback: T) {
@@ -393,15 +408,16 @@ export function getRenderClip(
   if (!clip) throw new Error("Clip не найден в render job.");
   const rangeRows = db
     .prepare(
-      `SELECT id, start_seconds, end_seconds, transition_type, transition_duration_seconds FROM clip_ranges
+      `SELECT id, start_seconds, end_seconds, transition_type, transition_duration_seconds, transition_easing FROM clip_ranges
      WHERE clip_id = ? ORDER BY range_order`,
     )
     .all(clipId) as Array<{
     id: string;
     start_seconds: number;
     end_seconds: number;
-    transition_type: "hard-cut" | "crossfade" | "dip-to-black";
+    transition_type: RangeTransition["type"];
     transition_duration_seconds: number;
+    transition_easing: RangeTransition["easing"];
   }>;
   const ranges = rangeRows.length
     ? rangeRows.map((range) => ({
@@ -411,6 +427,7 @@ export function getRenderClip(
         transition: {
           type: range.transition_type,
           durationSeconds: range.transition_duration_seconds,
+          easing: range.transition_easing,
         },
       }))
     : [
@@ -418,7 +435,11 @@ export function getRenderClip(
           id: clip.id,
           start: clip.start_seconds,
           end: clip.end_seconds,
-          transition: { type: "hard-cut" as const, durationSeconds: 0 },
+          transition: {
+            type: "hard-cut" as const,
+            durationSeconds: 0,
+            easing: "ease-in-out" as const,
+          },
         },
       ];
   const segments = db
@@ -445,7 +466,7 @@ export function getRenderClip(
   }>;
   const cropFrames = db
     .prepare(
-      `SELECT range_id, source_time_seconds, crop_x, crop_y, zoom, easing
+      `SELECT range_id, source_time_seconds, crop_x, crop_y, zoom, rotation, easing
      FROM crop_keyframes WHERE clip_id = ? ORDER BY source_time_seconds`,
     )
     .all(clipId) as Array<{
@@ -454,7 +475,8 @@ export function getRenderClip(
     crop_x: number;
     crop_y: number;
     zoom: number;
-    easing: "linear" | "ease-in-out" | "hold";
+    rotation: number;
+    easing: EditorEasing;
   }>;
   const subtitleFrames = db
     .prepare(
@@ -470,6 +492,56 @@ export function getRenderClip(
     subtitle_align: "left" | "center" | "right";
     transition: "hold" | "smooth";
   }>;
+  const documentRow = db
+    .prepare("SELECT document_json FROM editor_documents WHERE clip_id = ?")
+    .get(clipId) as { document_json: string } | undefined;
+  let masks: EditorMask[] = [];
+  let imageOverlays: ImageOverlay[] = [];
+  if (documentRow) {
+    try {
+      const document = editorDocumentV2Schema.safeParse(
+        JSON.parse(documentRow.document_json),
+      );
+      if (document.success) {
+        masks = document.data.masks;
+        imageOverlays = document.data.imageOverlays;
+      }
+    } catch {
+      // A legacy or interrupted editor document must not destroy an otherwise
+      // renderable clip. The API repairs it on the next editor load.
+    }
+  }
+  const requestedAssets = new Set(imageOverlays.map((item) => item.assetId));
+  const imageAssets = (
+    db
+      .prepare(
+        "SELECT id, stored_file_name, mime_type FROM editor_media_assets WHERE project_id = ? AND kind = 'image'",
+      )
+      .all(projectId) as Array<{
+      id: string;
+      stored_file_name: string;
+      mime_type: string;
+    }>
+  )
+    .filter((asset) => requestedAssets.has(asset.id))
+    .map((asset) => ({
+      id: asset.id,
+      storedFileName: asset.stored_file_name,
+      mimeType: asset.mime_type,
+    }));
+  const audio = parseSettings(
+    audioSettingsSchema,
+    clip.audio_settings_json,
+    DEFAULT_AUDIO_SETTINGS,
+  );
+  const musicAsset = audio.music?.assetId
+    ? (db
+        .prepare(
+          "SELECT stored_file_name AS storedFileName FROM editor_media_assets WHERE id = ? AND project_id = ? AND kind = 'music'",
+        )
+        .get(audio.music.assetId, projectId) as
+        { storedFileName: string } | undefined)
+    : null;
   return {
     id: clip.id,
     startSeconds: clip.start_seconds,
@@ -492,11 +564,7 @@ export function getRenderClip(
       clip.image_settings_json,
       DEFAULT_IMAGE_ADJUSTMENTS,
     ),
-    audio: parseSettings(
-      audioSettingsSchema,
-      clip.audio_settings_json,
-      DEFAULT_AUDIO_SETTINGS,
-    ),
+    audio,
     subtitleStyle: parseSettings(
       subtitleStyleSchema,
       clip.subtitle_style_json,
@@ -514,6 +582,7 @@ export function getRenderClip(
       cropX: frame.crop_x,
       cropY: frame.crop_y,
       zoom: frame.zoom,
+      rotation: frame.rotation,
       easing: frame.easing,
     })),
     subtitleKeyframes: subtitleFrames.map((frame) => ({
@@ -535,6 +604,10 @@ export function getRenderClip(
       endSeconds: word.end_seconds,
       text: word.text,
     })),
+    masks,
+    imageOverlays,
+    imageAssets,
+    musicAsset: musicAsset ?? null,
   };
 }
 
@@ -542,6 +615,15 @@ export function startRenderClip(db: Database.Database, clipId: string) {
   db.prepare(
     "UPDATE clips SET render_status = 'rendering', render_progress = 1, render_error = NULL WHERE id = ?",
   ).run(clipId);
+}
+
+export function isRenderJobActive(db: Database.Database, jobId: string) {
+  const row = db
+    .prepare(
+      "SELECT 1 active FROM jobs WHERE id = ? AND type = 'render_clips' AND status = 'running'",
+    )
+    .get(jobId) as { active: number } | undefined;
+  return Boolean(row);
 }
 
 export function updateRenderProgress(

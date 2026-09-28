@@ -36,6 +36,16 @@ input,
 textarea {
   font: inherit;
 }
+button:not(:disabled),
+input[type="button"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+input[type="reset"]:not(:disabled),
+input[type="file"]::file-selector-button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
 button,
 a {
   -webkit-tap-highlight-color: transparent;
@@ -1980,8 +1990,94 @@ a {
 }
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
+}
+
+.canvas-mask,
+.canvas-overlay {
+  position: absolute;
+  cursor: move;
+  touch-action: none;
+}
+
+.canvas-mask.selected,
+.canvas-overlay.selected {
+  outline: 1px solid #ff7a1a;
+  outline-offset: 2px;
+}
+
+.canvas-overlay img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.canvas-resize-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #ff6b00;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.3);
+}
+
+.layer-inspector {
+  gap: 8px;
+}
+
+.layer-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 7px 9px;
+  text-align: left;
+  color: #57473c;
+  border: 1px solid rgba(102, 64, 38, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.layer-row.active {
+  color: #a83e00;
+  border-color: rgba(255, 107, 0, 0.35);
+  background: rgba(255, 107, 0, 0.08);
+}
+
+.layer-row svg {
+  width: 15px;
+}
+
+.layer-row small {
+  opacity: 0.62;
+}
+
+.layer-properties {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid rgba(255, 107, 0, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 248, 242, 0.76);
+}
+
+.layer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.layer-actions .button {
+  min-height: 32px;
+  padding: 5px 8px;
+  font-size: 9px;
 }
 .template-grid button {
   display: grid;
@@ -2280,6 +2376,12 @@ a {
   gap: 24px;
   align-items: center;
   margin-bottom: 17px;
+}
+.render-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 .render-ring {
   width: 86px;
@@ -2950,7 +3052,7 @@ a {
       270px,
       0.85fr
     );
-  grid-template-rows: minmax(420px, calc(100dvh - 620px)) 240px;
+  grid-template-rows: minmax(390px, calc(100dvh - 520px)) 368px;
   gap: 12px;
   align-items: stretch;
 }
@@ -3259,6 +3361,31 @@ a {
   background: rgba(255, 123, 35, 0.06);
 }
 
+.music-waveform {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 48px;
+  padding: 5px 7px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #241b16;
+}
+
+.music-waveform i {
+  flex: 1 0 1px;
+  min-width: 1px;
+  max-width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(#ffb178, #ff6500);
+}
+
+.music-trim-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
 .inline-checks {
   display: grid;
   gap: 5px;
@@ -3435,7 +3562,7 @@ a {
 }
 
 .editor-timeline-scroll {
-  height: 168px;
+  height: 296px;
   overflow: auto hidden;
   border: 1px solid rgba(91, 55, 30, 0.1);
   border-radius: 12px;
@@ -3446,8 +3573,63 @@ a {
 .editor-timeline-canvas {
   position: relative;
   min-width: 100%;
-  height: 160px;
+  height: 288px;
   padding-top: 28px;
+}
+
+.timeline-mask-track > button,
+.timeline-overlay-track > button {
+  position: absolute;
+  top: 4px;
+  height: 24px;
+  overflow: hidden;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  background: #6b4acb;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.timeline-overlay-track > button {
+  background: #d7560b;
+}
+
+.timeline-mask-track > button.selected,
+.timeline-overlay-track > button.selected {
+  box-shadow: 0 0 0 2px #ffb47d;
+}
+
+.timeline-audio-track > span,
+.timeline-music-track > span {
+  position: absolute;
+  top: 5px;
+  height: 22px;
+  border-radius: 5px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(76, 190, 139, 0.8) 0 2px,
+    rgba(41, 115, 84, 0.8) 2px 5px
+  );
+}
+
+.timeline-music-track > span {
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 129, 46, 0.9) 0 2px,
+    rgba(157, 61, 8, 0.9) 2px 5px
+  );
+}
+
+.timeline-marker {
+  position: absolute;
+  z-index: 4;
+  top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  transform: translateX(-50%);
 }
 
 .timeline-ruler {

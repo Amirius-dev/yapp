@@ -183,4 +183,105 @@ describe("buildSubtitleCues", () => {
       },
     });
   });
+
+  it("passes a moving blur mask and transparent logo through the render boundary", () => {
+    const rangeId = "11111111-1111-4111-8111-111111111111";
+    const assetId = "22222222-2222-4222-8222-222222222222";
+    const parsed = verticalClipPropsSchema.parse({
+      videoFileName: "input.mp4",
+      durationSeconds: 20,
+      openingCaption: "",
+      cropMode: "fill",
+      cropX: 50,
+      cropY: 50,
+      zoom: 1,
+      subtitleX: 50,
+      subtitleY: 72,
+      subtitleScale: 1,
+      subtitleAlign: "center",
+      cues: [],
+      ranges: [{ id: rangeId, start: 0, end: 20 }],
+      masks: [
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          name: "Moving logo blur",
+          type: "blur",
+          shape: "rounded-rectangle",
+          startSeconds: 1,
+          endSeconds: 19,
+          x: 15,
+          y: 12,
+          width: 22,
+          height: 9,
+          rotation: 0,
+          intensity: 70,
+          opacity: 1,
+          feather: 8,
+          fillColor: "#000000",
+          visible: true,
+          locked: false,
+          layerOrder: 1,
+          keyframes: [
+            {
+              id: "44444444-4444-4444-8444-444444444444",
+              rangeId,
+              rangeTimeSeconds: 0,
+              x: 15,
+              y: 12,
+              width: 22,
+              height: 9,
+              rotation: 0,
+              intensity: 70,
+              opacity: 1,
+              easing: "smooth",
+            },
+            {
+              id: "55555555-5555-4555-8555-555555555555",
+              rangeId,
+              rangeTimeSeconds: 10,
+              x: 75,
+              y: 18,
+              width: 22,
+              height: 9,
+              rotation: 0,
+              intensity: 70,
+              opacity: 1,
+              easing: "hold",
+            },
+          ],
+        },
+      ],
+      imageOverlays: [
+        {
+          id: "66666666-6666-4666-8666-666666666666",
+          assetId,
+          name: "transparent.png",
+          startSeconds: 0,
+          endSeconds: 20,
+          x: 88,
+          y: 10,
+          width: 14,
+          height: 8,
+          scale: 1,
+          rotation: 0,
+          opacity: 0.8,
+          borderRadius: 0,
+          shadow: false,
+          visible: true,
+          locked: true,
+          layerOrder: 2,
+          animation: "fade",
+          watermark: true,
+          safeZone: true,
+          keyframes: [],
+        },
+      ],
+      imageAssets: [
+        { id: assetId, fileName: "overlay-logo.png", mimeType: "image/png" },
+      ],
+    });
+    expect(parsed.masks[0]?.keyframes).toHaveLength(2);
+    expect(parsed.imageOverlays[0]).toMatchObject({ assetId, watermark: true });
+    expect(parsed.imageAssets[0]?.fileName).toBe("overlay-logo.png");
+  });
 });

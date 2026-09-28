@@ -5,6 +5,7 @@ import {
   completeJob,
   finalizeRenderJob,
   getRenderClip,
+  isRenderJobActive,
   recoverInterruptedJobs,
 } from "../src/db.js";
 
@@ -85,17 +86,30 @@ function createTestDatabase() {
       id TEXT PRIMARY KEY, clip_id TEXT NOT NULL, range_order INTEGER NOT NULL,
       start_seconds REAL NOT NULL, end_seconds REAL NOT NULL,
       transition_type TEXT NOT NULL DEFAULT 'hard-cut',
-      transition_duration_seconds REAL NOT NULL DEFAULT 0
+      transition_duration_seconds REAL NOT NULL DEFAULT 0,
+      transition_easing TEXT NOT NULL DEFAULT 'ease-in-out'
     );
     CREATE TABLE crop_keyframes (
       id TEXT PRIMARY KEY, clip_id TEXT NOT NULL, range_id TEXT NOT NULL,
       source_time_seconds REAL NOT NULL, crop_x REAL NOT NULL, crop_y REAL NOT NULL,
-      zoom REAL NOT NULL, easing TEXT NOT NULL
+      zoom REAL NOT NULL, rotation REAL NOT NULL DEFAULT 0, easing TEXT NOT NULL
     );
     CREATE TABLE subtitle_keyframes (
       id TEXT PRIMARY KEY, clip_id TEXT NOT NULL, range_id TEXT NOT NULL,
       source_time_seconds REAL NOT NULL, subtitle_x REAL NOT NULL, subtitle_y REAL NOT NULL,
       subtitle_scale REAL NOT NULL, subtitle_align TEXT NOT NULL, transition TEXT NOT NULL
+    );
+    CREATE TABLE editor_documents (
+      clip_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL,
+      revision INTEGER NOT NULL, document_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE editor_media_assets (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, clip_id TEXT,
+      kind TEXT NOT NULL, stored_file_name TEXT NOT NULL,
+      original_name TEXT NOT NULL, mime_type TEXT NOT NULL,
+      duration_seconds REAL, width INTEGER, height INTEGER,
+      file_size_bytes INTEGER NOT NULL, waveform_json TEXT, created_at INTEGER NOT NULL
     );
   `);
   return db;
@@ -209,6 +223,17 @@ describe("worker persistence", () => {
     expect(db.prepare("SELECT status FROM projects").get()).toEqual({
       status: "reviewing_clips",
     });
+  });
+
+  it("detects when an active render job was reset by the API", () => {
+    db.prepare(
+      "INSERT INTO jobs (id, project_id, type, status, progress, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("job-render", "project-1", "render_clips", "running", 40, 1);
+    expect(isRenderJobActive(db, "job-render")).toBe(true);
+    db.prepare("UPDATE jobs SET status = 'failed' WHERE id = ?").run(
+      "job-render",
+    );
+    expect(isRenderJobActive(db, "job-render")).toBe(false);
   });
 
   it("keeps successful clips when a render job partially fails", () => {

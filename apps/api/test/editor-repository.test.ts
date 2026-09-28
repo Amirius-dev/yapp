@@ -108,5 +108,40 @@ describe("editor repository", () => {
     expect(JSON.parse(String(persisted.image_settings_json))).toMatchObject({
       brightness: 118,
     });
+
+    const snapshot = await editor.getDocument(projectId, clip!.id);
+    expect(snapshot).toMatchObject({
+      revision: 1,
+      document: { schemaVersion: 2, masks: [], imageOverlays: [] },
+    });
+    const changed = await editor.saveDocument(
+      projectId,
+      clip!.id,
+      snapshot.revision,
+      {
+        ...snapshot.document,
+        markers: [
+          {
+            id: "88888888-8888-4888-8888-888888888888",
+            timeSeconds: 3,
+            label: "Hook",
+            color: "#ff6b00",
+          },
+        ],
+      },
+    );
+    expect(changed.revision).toBe(2);
+    expect(changed.document.markers).toHaveLength(1);
+    await expect(
+      editor.saveDocument(
+        projectId,
+        clip!.id,
+        snapshot.revision,
+        snapshot.document,
+      ),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      details: { code: "EDITOR_REVISION_CONFLICT", currentRevision: 2 },
+    });
   });
 });

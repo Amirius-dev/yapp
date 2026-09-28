@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RenderRequest } from "@studio/contracts";
-import { getRenderResults, startRender } from "../api/render";
+import { getRenderResults, recoverRender, startRender } from "../api/render";
 import { clipKeys } from "./clips";
 import { projectKeys } from "./projects";
 
@@ -24,6 +24,23 @@ export function useStartRenderMutation(projectId: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (input: RenderRequest = {}) => startRender(projectId, input),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: renderKeys.results(projectId),
+      });
+      void client.invalidateQueries({ queryKey: clipKeys.all(projectId) });
+      void client.invalidateQueries({
+        queryKey: projectKeys.detail(projectId),
+      });
+      void client.invalidateQueries({ queryKey: projectKeys.all });
+    },
+  });
+}
+
+export function useRecoverRenderMutation(projectId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => recoverRender(projectId),
     onSuccess: () => {
       void client.invalidateQueries({
         queryKey: renderKeys.results(projectId),

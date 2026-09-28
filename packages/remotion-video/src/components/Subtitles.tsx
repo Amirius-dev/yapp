@@ -97,7 +97,10 @@ export function Subtitles({
     y: Math.min(84, Math.max(18, y)),
   };
   const widthPercent =
-    Math.min(85, 2 * Math.min(position.x - 5, 95 - position.x)) / scale;
+    Math.min(
+      style.maxWidth ?? 85,
+      2 * Math.min(position.x - 5, 95 - position.x),
+    ) / scale;
   return (
     <div
       style={{
@@ -123,8 +126,9 @@ export function Subtitles({
           padding: `${style.paddingVertical}px ${style.paddingHorizontal}px`,
           fontFamily: `${style.fontFamily}, sans-serif`,
           fontWeight: style.fontWeight,
-          fontSize: template.fontSize,
-          lineHeight: SUBTITLE_LAYOUT.lineHeight,
+          fontSize: style.fontSize ?? template.fontSize,
+          lineHeight: style.lineHeight ?? SUBTITLE_LAYOUT.lineHeight,
+          letterSpacing: style.letterSpacing ?? 0,
           maxWidth: SUBTITLE_LAYOUT.maxWidth,
           overflowWrap: "anywhere",
           display: "-webkit-box",
@@ -139,7 +143,9 @@ export function Subtitles({
           borderRadius: style.borderRadius,
           WebkitTextStroke: `${style.outlineWidth}px ${style.outlineColor}`,
           paintOrder: "stroke fill",
-          textShadow: style.shadow ? "0 6px 16px rgba(0,0,0,0.72)" : "none",
+          textShadow: style.shadow
+            ? `0 6px ${style.shadowBlur ?? 16}px rgba(0,0,0,0.72)`
+            : "none",
         }}
       >
         {cue.words.length

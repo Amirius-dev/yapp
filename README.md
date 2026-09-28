@@ -260,6 +260,26 @@ Backend является источником истины. Frontend не дол
 `editor_presets`. Старые клипы миграция автоматически превращает в один
 range, не удаляя исходные данные и готовые renders.
 
+Полное состояние desktop editor хранится как версионированный
+`EditorDocumentV2` в `editor_documents`. В документ входят ranges, crop и
+subtitle keyframes, маски, image overlays, порядок слоёв и markers. Поле
+`revision` используется для optimistic concurrency: устаревшая вкладка не
+может незаметно перезаписать более свежую версию. Старые записи лениво
+нормализуются в V2 при первом открытии.
+
+### editor_media_assets
+
+- id;
+- project_id;
+- clip_id;
+- kind (`music` или `image`);
+- безопасное внутреннее имя файла;
+- исходное имя, MIME, размер и media metadata;
+- waveform для аудио.
+
+Файлы находятся только в project media directory. Frontend получает asset ID
+и API URL, но никогда не получает абсолютный путь файловой системы.
+
 ### jobs
 
 - id
@@ -289,6 +309,10 @@ GET    /api/projects/:id/clips
 PATCH  /api/projects/:id/clips/:clipId
 GET    /api/projects/:id/clips/:clipId/editor
 PUT    /api/projects/:id/clips/:clipId/editor
+GET    /api/projects/:id/clips/:clipId/editor-document
+PUT    /api/projects/:id/clips/:clipId/editor-document
+POST   /api/projects/:id/clips/:clipId/assets/:kind
+GET    /api/editor/assets/:assetId/media
 POST   /api/projects/:id/clips/:clipId/music
 GET    /api/projects/:id/music/:fileName
 GET    /api/editor/presets
@@ -332,12 +356,22 @@ pnpm dev
 фрагмент, так и несколько несмежных ranges в заданном порядке; версия 1 по-
 прежнему принимается и нормализуется в один range.
 
-Полноэкранный редактор сохраняет ranges, transitions, crop/subtitle keyframes,
-Fill/Fit, коррекцию изображения, настройки звука и музыки, субтитры, opening
-caption и пользовательские пресеты в SQLite. Preview, worker и Remotion
-используют общую output-time модель из `@studio/contracts`: пропуски между
-ranges не воспроизводятся, а длительность считается как сумма частей с учётом
-переходов. После сохранения устаревший render автоматически инвалидируется.
+Полноэкранный редактор сохраняет версионированный документ с ranges,
+transitions, crop/subtitle keyframes, масками, image overlays, Fill/Fit,
+коррекцией изображения, настройками звука и музыки, субтитрами, opening
+caption и markers в SQLite. Изменения проходят через последовательную
+autosave queue; revision защищает от потери изменений между вкладками.
+Preview, worker и Remotion используют общую output-time модель из
+`@studio/contracts`: пропуски между ranges не воспроизводятся, а длительность
+считается как сумма частей с учётом переходов. После сохранения устаревший
+render автоматически инвалидируется.
+
+PNG, JPEG и WebP можно загрузить как overlay или постоянный watermark. Маски
+поддерживают blur, pixelate и solid fill, формы rectangle, rounded rectangle и
+ellipse, а также range-local keyframes, включая easing `hold`. Overlay и mask
+можно перемещать и масштабировать прямо на canvas; порядок слоёв, timing,
+opacity, rotation, visibility и lock сохраняются после перезагрузки. Preview и
+Remotion вычисляют состояние keyframes одними функциями shared contracts.
 
 Страница рендера создаёт фоновую задачу: worker последовательно собирает
 ranges и звук через FFmpeg, создаёт вертикальный ролик 1080×1920 через
@@ -472,7 +506,12 @@ Timeline, keyframes и изменение положения субтитров 
 - Fill и Fit с синхронным размытым фоном;
 - коррекция изображения, crop/subtitle keyframes и безопасные пресеты;
 - громкость, fades, нормализация, шумоподавление и один локальный music track;
+- waveform, trim музыки и настраиваемый ducking;
 - расширенный стиль субтитров, opening caption и переходы между ranges;
+- mask track: blur, pixelate и solid masks с keyframes и `hold` easing;
+- overlay track: PNG/JPEG/WebP, watermark presets, animations и layer order;
+- `EditorDocumentV2`, revision concurrency, serial autosave и восстановление
+  draft после refresh;
 - пользовательские пресеты и автоматическая инвалидация старого render;
 - совместимый MP4: H.264/AAC, 1080×1920, 30 FPS, `yuv420p`, faststart.
 
@@ -482,9 +521,10 @@ preview использует те же значения и CSS-фильтры; �
 шумоподавление, fades и ducking музыки слышны только после render — интерфейс
 не имитирует эти FFmpeg-фильтры в реальном времени.
 
-Текущие ограничения: без определения и сопровождения лица, waveform,
-покадровой кривой громкости, нескольких музыкальных дорожек и удаления текста,
-который уже был вшит в исходное видео.
+Текущие ограничения: без определения и сопровождения лица или объектов,
+покадровой кривой громкости, нескольких музыкальных дорожек, video overlays и
+удаления текста, который уже был вшит в исходное видео. Маски двигаются только
+по keyframes, расставленным пользователем; автоматического tracking пока нет.
 
 ## Критерий готовности MVP
 

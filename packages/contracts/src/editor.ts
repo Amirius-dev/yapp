@@ -20,9 +20,9 @@ import {
   openingCaptionSettingsSchema,
   subtitleStyleSchema,
 } from "./editor-settings.js";
-import { rangeTransitionSchema } from "./timeline.js";
+import { editorEasingSchema, rangeTransitionSchema } from "./timeline.js";
 
-export const cropEasingSchema = z.enum(["linear", "ease-in-out", "hold"]);
+export const cropEasingSchema = editorEasingSchema;
 export const subtitleTransitionSchema = z.enum(["hold", "smooth"]);
 
 export const editorRangeSchema = z
@@ -33,6 +33,7 @@ export const editorRangeSchema = z
     transition: rangeTransitionSchema.default({
       type: "hard-cut",
       durationSeconds: 0,
+      easing: "ease-in-out",
     }),
   })
   .strict();
@@ -45,6 +46,7 @@ export const cropKeyframeSchema = z
     cropX: z.number().finite().min(0).max(100),
     cropY: z.number().finite().min(0).max(100),
     zoom: z.number().finite().min(1).max(1.5),
+    rotation: z.number().finite().min(-180).max(180).optional(),
     easing: cropEasingSchema,
   })
   .strict();

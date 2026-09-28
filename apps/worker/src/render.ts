@@ -1,6 +1,14 @@
 import { spawn } from "node:child_process";
-import { access, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import {
+  access,
+  copyFile,
+  mkdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { basename, extname, join } from "node:path";
 import { buildTimelineSubtitleCues } from "@studio/remotion-video";
 import { buildTimeline, timelineDuration } from "@studio/contracts";
 import { renderVerticalClip } from "@studio/remotion-video/render";
@@ -135,7 +143,17 @@ async function assembleRanges(
       const nextAudio = `a${index}`;
       if (transition > 0) {
         const effect =
-          previous.transition?.type === "dip-to-black" ? "fadeblack" : "fade";
+          previous.transition?.type === "dip-to-black"
+            ? "fadeblack"
+            : previous.transition?.type === "dip-to-white"
+              ? "fadewhite"
+              : previous.transition?.type === "slide"
+                ? "slideleft"
+                : previous.transition?.type === "zoom"
+                  ? "zoomin"
+                  : previous.transition?.type === "blur-dissolve"
+                    ? "hblur"
+                    : "fade";
         filters.push(
           `[${videoLabel}][${index}:v]xfade=transition=${effect}:duration=${transition}:offset=${timeline[index]!.outputStart}[${nextVideo}]`,
         );
@@ -214,14 +232,15 @@ async function applyAudioSettings(
   }
   const args = ["-y", "-i", inputPath];
   if (music) {
-    if (basename(music.fileName) !== music.fileName)
+    const storedFileName = clip.musicAsset?.storedFileName ?? music.fileName;
+    if (!storedFileName || basename(storedFileName) !== storedFileName)
       throw new Error("Некорректное имя музыкального файла.");
     const musicPath = join(
       dataRoot,
       "projects",
       job.projectId,
-      "music",
-      music.fileName,
+      clip.musicAsset ? "assets" : "music",
+      storedFileName,
     );
     await access(musicPath);
     if (music.loop) args.push("-stream_loop", "-1");
@@ -246,6 +265,7 @@ async function applyAudioSettings(
   if (music) {
     const musicDuration = Math.max(0.1, duration - music.startSeconds);
     const musicFilters = [
+      `atrim=start=${music.trimStartSeconds ?? 0}${music.trimEndSeconds ? `:end=${music.trimEndSeconds}` : ""}`,
       `atrim=duration=${musicDuration}`,
       "asetpts=PTS-STARTPTS",
       `volume=${music.volume}`,
@@ -265,8 +285,11 @@ async function applyAudioSettings(
   let audioMap: string;
   if (job.sourceHasAudio && music) {
     if (music.duckDuringSpeech) {
+      const ratio = 1 + (music.duckAmount ?? 0.55) * 15;
+      const attack = Math.round((music.duckAttackSeconds ?? 0.08) * 1000);
+      const release = Math.round((music.duckReleaseSeconds ?? 0.42) * 1000);
       filters.push(
-        "[music][speech]sidechaincompress=threshold=0.045:ratio=8:attack=20:release=420[ducked]",
+        `[music][speech]sidechaincompress=threshold=0.045:ratio=${ratio}:attack=${attack}:release=${release}[ducked]`,
       );
       filters.push(
         "[speech][ducked]amix=inputs=2:duration=first:dropout_transition=2[aout]",
@@ -427,6 +450,24 @@ export async function renderClip(
       clip.words,
       clip.subtitleStyle.maxWords,
     );
+    const imageAssets = await Promise.all(
+      clip.imageAssets.map(async (asset) => {
+        if (basename(asset.storedFileName) !== asset.storedFileName)
+          throw new Error("Некорректное имя image asset.");
+        const fileName = `overlay-${asset.id}${extname(asset.storedFileName)}`;
+        await copyFile(
+          join(
+            dataRoot,
+            "projects",
+            job.projectId,
+            "assets",
+            asset.storedFileName,
+          ),
+          join(publicDir, fileName),
+        );
+        return { id: asset.id, fileName, mimeType: asset.mimeType };
+      }),
+    );
     await renderVerticalClip({
       publicDir,
       outputPath: renderedPath,
@@ -454,6 +495,9 @@ export async function renderClip(
         ranges: clip.ranges,
         cropKeyframes: clip.cropKeyframes,
         subtitleKeyframes: clip.subtitleKeyframes,
+        masks: clip.masks,
+        imageOverlays: clip.imageOverlays,
+        imageAssets,
       },
       onProgress: (progress) => onProgress(20 + progress * 70),
       browserExecutable: remotionBrowserExecutable,

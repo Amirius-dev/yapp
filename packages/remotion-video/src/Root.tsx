@@ -38,6 +38,9 @@ const defaults: VerticalClipProps = {
   ],
   cropKeyframes: [],
   subtitleKeyframes: [],
+  masks: [],
+  imageOverlays: [],
+  imageAssets: [],
 };
 
 export function RemotionRoot() {

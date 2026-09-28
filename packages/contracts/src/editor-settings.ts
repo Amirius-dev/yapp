@@ -49,7 +49,11 @@ export const DEFAULT_IMAGE_ADJUSTMENTS = {
 
 export const musicSettingsSchema = z
   .object({
-    fileName: z.string().regex(/^[a-zA-Z0-9._-]+$/u),
+    fileName: z
+      .string()
+      .regex(/^[a-zA-Z0-9._-]+$/u)
+      .optional(),
+    assetId: z.uuid().optional(),
     originalName: z.string().trim().min(1).max(255),
     mimeType: z.enum([
       "audio/mpeg",
@@ -61,12 +65,36 @@ export const musicSettingsSchema = z
     ]),
     volume: finite().min(0).max(2),
     startSeconds: finite().min(0).max(90),
+    trimStartSeconds: finite().min(0).optional(),
+    trimEndSeconds: finite().positive().nullable().optional(),
     loop: z.boolean(),
     fadeInSeconds: finite().min(0).max(10),
     fadeOutSeconds: finite().min(0).max(10),
     duckDuringSpeech: z.boolean(),
+    duckAmount: finite().min(0).max(1).optional(),
+    duckAttackSeconds: finite().min(0.01).max(2).optional(),
+    duckReleaseSeconds: finite().min(0.01).max(5).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((music, context) => {
+    if (!music.fileName && !music.assetId)
+      context.addIssue({
+        code: "custom",
+        path: ["assetId"],
+        message:
+          "Музыка должна ссылаться на безопасный assetId или legacy fileName.",
+      });
+    if (
+      music.trimEndSeconds !== null &&
+      music.trimEndSeconds !== undefined &&
+      music.trimEndSeconds <= (music.trimStartSeconds ?? 0)
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["trimEndSeconds"],
+        message: "Trim end должен быть позже trim start.",
+      });
+  });
 
 export const audioSettingsSchema = z
   .object({
@@ -109,6 +137,9 @@ export const subtitleStyleSchema = z
   .object({
     fontFamily: subtitleFontFamilySchema,
     fontWeight: z.number().int().min(400).max(900),
+    fontSize: finite().min(24).max(120).default(64),
+    lineHeight: finite().min(0.8).max(2).default(1.08),
+    letterSpacing: finite().min(-5).max(20).default(0),
     textColor: accentColorSchema,
     activeWordColor: accentColorSchema,
     backgroundColor: accentColorSchema,
@@ -116,6 +147,9 @@ export const subtitleStyleSchema = z
     outlineColor: accentColorSchema,
     outlineWidth: finite().min(0).max(8),
     shadow: z.boolean(),
+    shadowBlur: finite().min(0).max(40).default(16),
+    maxWidth: finite().min(30).max(90).default(85),
+    safeZone: z.boolean().default(true),
     borderRadius: finite().min(0).max(40),
     paddingHorizontal: finite().min(0).max(48),
     paddingVertical: finite().min(0).max(32),
@@ -129,6 +163,9 @@ export const subtitleStyleSchema = z
 export const DEFAULT_SUBTITLE_STYLE = {
   fontFamily: "Arial",
   fontWeight: 900,
+  fontSize: 64,
+  lineHeight: 1.08,
+  letterSpacing: 0,
   textColor: "#ffffff",
   activeWordColor: "#ff6b00",
   backgroundColor: "#000000",
@@ -136,6 +173,9 @@ export const DEFAULT_SUBTITLE_STYLE = {
   outlineColor: "#000000",
   outlineWidth: 4,
   shadow: true,
+  shadowBlur: 16,
+  maxWidth: 85,
+  safeZone: true,
   borderRadius: 10,
   paddingHorizontal: 20,
   paddingVertical: 10,

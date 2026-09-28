@@ -40,7 +40,9 @@ export async function buildApp() {
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof HttpError) {
-      return reply.status(error.statusCode).send({ error: error.message });
+      return reply
+        .status(error.statusCode)
+        .send({ error: error.message, ...error.details });
     }
     if (error instanceof ZodError) {
       return reply.status(400).send({ error: "Некорректные данные запроса." });

@@ -1,15 +1,31 @@
 import { z } from "zod";
 
+export const editorEasingSchema = z.enum([
+  "linear",
+  "ease-in",
+  "ease-out",
+  "ease-in-out",
+  "smooth",
+  "hold",
+]);
+
+export type EditorEasing = z.infer<typeof editorEasingSchema>;
+
 export const rangeTransitionTypeSchema = z.enum([
   "hard-cut",
   "crossfade",
   "dip-to-black",
+  "dip-to-white",
+  "slide",
+  "zoom",
+  "blur-dissolve",
 ]);
 
 export const rangeTransitionSchema = z
   .object({
     type: rangeTransitionTypeSchema.default("hard-cut"),
     durationSeconds: z.number().finite().min(0).max(1.5).default(0),
+    easing: editorEasingSchema.optional(),
   })
   .strict();
 
@@ -112,13 +128,16 @@ export function sourceToOutputTime(
   return range.outputStart + sourceTime - range.start;
 }
 
-export function easingProgress(
-  value: number,
-  easing: "linear" | "ease-in-out" | "hold",
-) {
+export function easingProgress(value: number, easing: EditorEasing) {
   const progress = Math.max(0, Math.min(1, value));
   if (easing === "hold") return 0;
+  if (easing === "ease-in") return progress * progress;
+  if (easing === "ease-out") return 1 - (1 - progress) * (1 - progress);
   if (easing === "ease-in-out") return progress * progress * (3 - 2 * progress);
+  if (easing === "smooth")
+    return (
+      progress * progress * progress * (progress * (progress * 6 - 15) + 10)
+    );
   return progress;
 }
 
@@ -128,14 +147,16 @@ type CropFrame = {
   cropX: number;
   cropY: number;
   zoom: number;
-  easing: "linear" | "ease-in-out" | "hold";
+  rotation?: number;
+  easing: EditorEasing;
 };
 
 export function interpolateCrop(
   keyframes: readonly CropFrame[],
   rangeId: string,
   sourceTime: number,
-  fallback: Pick<CropFrame, "cropX" | "cropY" | "zoom">,
+  fallback: Pick<CropFrame, "cropX" | "cropY" | "zoom"> &
+    Partial<Pick<CropFrame, "rotation">>,
 ) {
   const frames = keyframes
     .filter((frame) => frame.rangeId === rangeId)
@@ -155,6 +176,9 @@ export function interpolateCrop(
     cropX: previous.cropX + (next.cropX - previous.cropX) * progress,
     cropY: previous.cropY + (next.cropY - previous.cropY) * progress,
     zoom: previous.zoom + (next.zoom - previous.zoom) * progress,
+    rotation:
+      (previous.rotation ?? 0) +
+      ((next.rotation ?? 0) - (previous.rotation ?? 0)) * progress,
   };
 }
 

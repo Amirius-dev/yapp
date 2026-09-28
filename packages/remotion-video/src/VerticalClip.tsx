@@ -3,6 +3,7 @@ import type { VerticalClipProps } from "./schema";
 import { OpeningCaption } from "./components/OpeningCaption";
 import { Subtitles } from "./components/Subtitles";
 import { VideoLayers } from "./components/VideoLayers";
+import { EffectsLayers } from "./components/EffectsLayers";
 
 export function VerticalClip(props: VerticalClipProps) {
   return (
@@ -16,6 +17,12 @@ export function VerticalClip(props: VerticalClipProps) {
         ranges={props.ranges}
         cropKeyframes={props.cropKeyframes}
         image={props.image}
+      />
+      <EffectsLayers
+        ranges={props.ranges}
+        masks={props.masks}
+        imageOverlays={props.imageOverlays}
+        imageAssets={props.imageAssets}
       />
       <OpeningCaption settings={props.openingCaptionSettings} />
       {props.captionsEnabled && (

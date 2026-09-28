@@ -33,6 +33,11 @@ export async function registerRenderRoutes(
     return reply.status(202).send(renderRepository.enqueue(id, parsed.data));
   });
 
+  app.post("/api/projects/:id/render/recover", async (request, reply) => {
+    const id = projectIdFrom(request.params);
+    return reply.status(200).send(renderRepository.recoverActive(id));
+  });
+
   app.get("/api/projects/:id/results", async (request) => {
     const projectId = projectIdFrom(request.params);
     const allClips = await clipsRepository.list(projectId);

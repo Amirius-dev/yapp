@@ -18,6 +18,13 @@ const allowedMusicTypes = new Map([
   [".aac", new Set(["audio/aac"])],
 ]);
 
+const allowedImageTypes = new Map([
+  [".png", new Set(["image/png"])],
+  [".jpg", new Set(["image/jpeg"])],
+  [".jpeg", new Set(["image/jpeg"])],
+  [".webp", new Set(["image/webp"])],
+]);
+
 export function validateVideoUpload(filename: string, mimeType: string) {
   const safeName = basename(filename);
   const extension = extname(safeName).toLowerCase();
@@ -51,6 +58,30 @@ export function validateMusicUpload(filename: string, mimeType: string) {
       `MIME-тип ${mimeType || "не указан"} не соответствует расширению ${extension}.`,
     );
   return { originalName: safeName, extension };
+}
+
+export function validateImageUpload(filename: string, mimeType: string) {
+  const safeName = basename(filename);
+  const extension = extname(safeName).toLowerCase();
+  const mimeTypes = allowedImageTypes.get(extension);
+  if (!mimeTypes)
+    throw new HttpError(415, "Поддерживаются PNG, JPG и WebP изображения.");
+  if (!mimeTypes.has(mimeType.toLowerCase()))
+    throw new HttpError(
+      415,
+      `MIME-тип ${mimeType || "не указан"} не соответствует расширению ${extension}.`,
+    );
+  return { originalName: safeName, extension };
+}
+
+export async function prepareEditorAssetDestination(
+  projectId: string,
+  extension: string,
+) {
+  const directory = join(projectsRoot, projectId, "assets");
+  await mkdir(directory, { recursive: true });
+  const fileName = `${randomUUID()}${extension}`;
+  return { absolutePath: join(directory, fileName), fileName };
 }
 
 export async function prepareMusicDestination(

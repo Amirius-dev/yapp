@@ -7,6 +7,8 @@ import {
   openingCaptionSettingsSchema,
   rangeTransitionSchema,
   subtitleStyleSchema,
+  editorMaskSchema,
+  imageOverlaySchema,
 } from "@studio/contracts";
 
 export const subtitleCueSchema = z.object({
@@ -31,6 +33,7 @@ const rangeSchema = z.object({
   transition: rangeTransitionSchema.default({
     type: "hard-cut",
     durationSeconds: 0,
+    easing: "ease-in-out",
   }),
 });
 const cropKeyframeSchema = z.object({
@@ -39,7 +42,15 @@ const cropKeyframeSchema = z.object({
   cropX: z.number(),
   cropY: z.number(),
   zoom: z.number(),
-  easing: z.enum(["linear", "ease-in-out", "hold"]),
+  rotation: z.number().default(0),
+  easing: z.enum([
+    "linear",
+    "ease-in",
+    "ease-out",
+    "ease-in-out",
+    "smooth",
+    "hold",
+  ]),
 });
 const subtitleKeyframeSchema = z.object({
   rangeId: z.string(),
@@ -80,6 +91,17 @@ export const verticalClipPropsSchema = z.object({
   ranges: z.array(rangeSchema).default([]),
   cropKeyframes: z.array(cropKeyframeSchema).default([]),
   subtitleKeyframes: z.array(subtitleKeyframeSchema).default([]),
+  masks: z.array(editorMaskSchema).default([]),
+  imageOverlays: z.array(imageOverlaySchema).default([]),
+  imageAssets: z
+    .array(
+      z.object({
+        id: z.uuid(),
+        fileName: z.string().min(1),
+        mimeType: z.string().min(1),
+      }),
+    )
+    .default([]),
 });
 
 export type SubtitleCue = z.infer<typeof subtitleCueSchema>;

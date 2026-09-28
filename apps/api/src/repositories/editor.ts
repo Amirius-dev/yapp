@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { asc, eq } from "drizzle-orm";
 import {
+  editorDocumentV2Schema,
   editorPresetSettingsSchema,
   templateOptions,
   timelineDuration,
+  type EditorDocumentSnapshot,
+  type EditorDocumentV2,
   type EditorPreset,
   type EditorPresetCreateInput,
   type EditorSaveInput,
@@ -14,6 +17,8 @@ import {
   clipRanges,
   clips,
   cropKeyframes,
+  editorDocuments,
+  editorMediaAssets,
   editorPresets,
   projects,
   subtitleKeyframes,
@@ -27,6 +32,51 @@ export function createEditorRepository(
   db: StudioDatabase,
   clipsRepository: ClipsRepository,
 ) {
+  function documentFromState(state: EditorState): EditorDocumentV2 {
+    return editorDocumentV2Schema.parse({
+      schemaVersion: 2,
+      ranges: state.ranges,
+      cropKeyframes: state.cropKeyframes,
+      subtitleKeyframes: state.subtitleKeyframes,
+      frameMode: state.frameMode,
+      subtitleX: state.subtitleX,
+      subtitleY: state.subtitleY,
+      subtitleScale: state.subtitleScale,
+      subtitleAlign: state.subtitleAlign,
+      templateId: state.templateId,
+      accentColor: state.accentColor,
+      captionsEnabled: state.captionsEnabled,
+      openingCaptionEnabled: state.openingCaptionEnabled,
+      image: state.image,
+      audio: state.audio,
+      subtitleStyle: state.subtitleStyle,
+      openingCaption: state.openingCaption,
+      masks: [],
+      imageOverlays: [],
+      markers: [],
+    });
+  }
+
+  function assetDto(row: typeof editorMediaAssets.$inferSelect) {
+    return {
+      id: row.id,
+      projectId: row.projectId,
+      clipId: row.clipId,
+      kind: row.kind,
+      originalName: row.originalName,
+      mimeType: row.mimeType,
+      durationSeconds: row.durationSeconds,
+      width: row.width,
+      height: row.height,
+      fileSizeBytes: row.fileSizeBytes,
+      mediaUrl: `/api/editor/assets/${row.id}/media`,
+      waveform: row.waveformJson
+        ? (JSON.parse(row.waveformJson) as number[])
+        : null,
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
   async function getState(
     projectId: string,
     clipId: string,
@@ -92,6 +142,7 @@ export function createEditorRepository(
         cropX: row.cropX,
         cropY: row.cropY,
         zoom: row.zoom,
+        rotation: row.rotation,
         easing: row.easing,
       })),
       subtitleKeyframes: subtitleRows.map((row) => ({
@@ -160,6 +211,7 @@ export function createEditorRepository(
     projectId: string,
     clipId: string,
     input: EditorSaveInput,
+    documentSave?: { baseRevision: number; document: EditorDocumentV2 },
   ): Promise<EditorState> {
     const warnings: string[] = [];
     db.transaction((tx) => {
@@ -173,6 +225,25 @@ export function createEditorRepository(
         throw new HttpError(404, "Clip не найден.");
       if (!project.duration)
         throw new HttpError(409, "У проекта отсутствует длительность видео.");
+      const currentDocument = documentSave
+        ? tx
+            .select()
+            .from(editorDocuments)
+            .where(eq(editorDocuments.clipId, clipId))
+            .get()
+        : null;
+      if (
+        documentSave &&
+        currentDocument?.revision !== documentSave.baseRevision
+      )
+        throw new HttpError(
+          409,
+          "Редактор был изменён в другой вкладке. Обновите данные или сохраните копию вручную.",
+          {
+            code: "EDITOR_REVISION_CONFLICT",
+            currentRevision: currentDocument?.revision ?? null,
+          },
+        );
 
       const duplicateRanges = new Set<string>();
       for (const range of input.ranges) {
@@ -228,6 +299,7 @@ export function createEditorRepository(
             cropX: clip.cropX,
             cropY: clip.cropY,
             zoom: clip.zoom,
+            rotation: 0,
             easing: "linear",
           });
         }
@@ -273,6 +345,7 @@ export function createEditorRepository(
             endSeconds: range.end,
             transitionType: range.transition.type,
             transitionDurationSeconds: range.transition.durationSeconds,
+            transitionEasing: range.transition.easing ?? "ease-in-out",
             createdAt: now,
             updatedAt: now,
           })
@@ -335,9 +408,125 @@ export function createEditorRepository(
         .set({ status: "reviewing_clips", updatedAt: now })
         .where(eq(projects.id, projectId))
         .run();
+      if (documentSave && currentDocument) {
+        tx.update(editorDocuments)
+          .set({
+            schemaVersion: 2,
+            revision: currentDocument.revision + 1,
+            documentJson: JSON.stringify(documentSave.document),
+            updatedAt: now,
+          })
+          .where(eq(editorDocuments.clipId, clipId))
+          .run();
+      }
     });
     const state = await getState(projectId, clipId);
     return { ...state, warnings };
+  }
+
+  async function getDocument(
+    projectId: string,
+    clipId: string,
+  ): Promise<EditorDocumentSnapshot> {
+    const context = await getState(projectId, clipId);
+    let row = await db
+      .select()
+      .from(editorDocuments)
+      .where(eq(editorDocuments.clipId, clipId))
+      .get();
+    if (!row) {
+      const now = new Date();
+      const document = documentFromState(context);
+      await db
+        .insert(editorDocuments)
+        .values({
+          clipId,
+          schemaVersion: 2,
+          revision: 1,
+          documentJson: JSON.stringify(document),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing()
+        .run();
+      row = await db
+        .select()
+        .from(editorDocuments)
+        .where(eq(editorDocuments.clipId, clipId))
+        .get();
+    }
+    if (!row) throw new HttpError(500, "Не удалось создать editor document.");
+    const parsed = editorDocumentV2Schema.safeParse(
+      JSON.parse(row.documentJson),
+    );
+    const document = parsed.success ? parsed.data : documentFromState(context);
+    if (!parsed.success) {
+      await db
+        .update(editorDocuments)
+        .set({ documentJson: JSON.stringify(document), updatedAt: new Date() })
+        .where(eq(editorDocuments.clipId, clipId))
+        .run();
+    }
+    const assets = await db
+      .select()
+      .from(editorMediaAssets)
+      .where(eq(editorMediaAssets.projectId, projectId))
+      .orderBy(asc(editorMediaAssets.createdAt));
+    return {
+      revision: row.revision,
+      document,
+      context,
+      mediaAssets: assets.map(assetDto),
+    };
+  }
+
+  async function saveDocument(
+    projectId: string,
+    clipId: string,
+    baseRevision: number,
+    document: EditorDocumentV2,
+  ) {
+    await getDocument(projectId, clipId);
+    await save(projectId, clipId, document, { baseRevision, document });
+    return getDocument(projectId, clipId);
+  }
+
+  async function createMediaAsset(input: {
+    id: string;
+    projectId: string;
+    clipId: string;
+    kind: "music" | "image";
+    storedFileName: string;
+    originalName: string;
+    mimeType: string;
+    durationSeconds: number | null;
+    width: number | null;
+    height: number | null;
+    fileSizeBytes: number;
+    waveform?: number[] | null;
+  }) {
+    const state = await getState(input.projectId, input.clipId);
+    if (state.clip.id !== input.clipId)
+      throw new HttpError(404, "Clip не найден.");
+    const [row] = await db
+      .insert(editorMediaAssets)
+      .values({
+        ...input,
+        waveformJson: input.waveform ? JSON.stringify(input.waveform) : null,
+        createdAt: new Date(),
+      })
+      .returning();
+    return assetDto(row!);
+  }
+
+  async function getMediaAsset(id: string) {
+    const row = await db
+      .select()
+      .from(editorMediaAssets)
+      .where(eq(editorMediaAssets.id, id))
+      .get();
+    if (!row) throw new HttpError(404, "Media asset не найден.");
+    return row;
   }
 
   async function listPresets(): Promise<EditorPreset[]> {
@@ -385,7 +574,17 @@ export function createEditorRepository(
     if (!deleted.length) throw new HttpError(404, "Preset не найден.");
   }
 
-  return { getState, save, listPresets, createPreset, deletePreset };
+  return {
+    getState,
+    save,
+    getDocument,
+    saveDocument,
+    createMediaAsset,
+    getMediaAsset,
+    listPresets,
+    createPreset,
+    deletePreset,
+  };
 }
 
 export type EditorRepository = ReturnType<typeof createEditorRepository>;

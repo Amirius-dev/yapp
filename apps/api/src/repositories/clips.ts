@@ -175,6 +175,7 @@ export function createClipsRepository(db: StudioDatabase) {
               transition: {
                 type: range.transitionType,
                 durationSeconds: range.transitionDurationSeconds,
+                easing: range.transitionEasing,
               },
               segmentIds: segmentRows
                 .filter(
@@ -239,6 +240,7 @@ export function createClipsRepository(db: StudioDatabase) {
                 endSeconds: range.end,
                 transitionType: "hard-cut",
                 transitionDurationSeconds: 0,
+                transitionEasing: "ease-in-out",
                 createdAt: orderedAt,
                 updatedAt: orderedAt,
               })
@@ -248,7 +250,11 @@ export function createClipsRepository(db: StudioDatabase) {
               rangeOrder,
               start: range.start,
               end: range.end,
-              transition: { type: "hard-cut" as const, durationSeconds: 0 },
+              transition: {
+                type: "hard-cut" as const,
+                durationSeconds: 0,
+                easing: "ease-in-out" as const,
+              },
               segmentIds: range.segmentIds,
             };
           });
@@ -494,6 +500,7 @@ export function createClipsRepository(db: StudioDatabase) {
             transition: {
               type: range.transitionType,
               durationSeconds: range.transitionDurationSeconds,
+              easing: range.transitionEasing,
             },
             segmentIds: segments
               .filter(

@@ -32,6 +32,15 @@ export async function startRender(
   return jobSchema.parse(await response.json());
 }
 
+export async function recoverRender(projectId: string): Promise<JobDto> {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/render/recover`,
+    { method: "POST" },
+  );
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return jobSchema.parse(await response.json());
+}
+
 export async function getRenderResults(
   projectId: string,
 ): Promise<RenderResultsDto> {

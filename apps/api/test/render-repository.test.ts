@@ -109,4 +109,38 @@ describe("render repository", () => {
     });
     expect(job.status).toBe("queued");
   });
+
+  it("recovers a stuck render queue and makes its clips retryable", () => {
+    const repository = createRenderRepository(database.db);
+    const queued = repository.enqueue(projectId, {});
+    database.sqlite
+      .prepare("UPDATE jobs SET status = 'running', progress = 54 WHERE id = ?")
+      .run(queued.id);
+    database.sqlite
+      .prepare(
+        "UPDATE clips SET render_status = 'rendering', render_progress = 53 WHERE id = ?",
+      )
+      .run(clipIds[0]);
+
+    const recovered = repository.recoverActive(projectId);
+
+    expect(recovered.status).toBe("failed");
+    expect(
+      database.sqlite
+        .prepare(
+          "SELECT render_status, render_progress, render_error FROM clips WHERE id = ?",
+        )
+        .get(clipIds[0]),
+    ).toMatchObject({
+      render_status: "failed",
+      render_progress: 0,
+      render_error: expect.stringContaining("повторный рендер"),
+    });
+    expect(
+      database.sqlite
+        .prepare("SELECT status FROM projects WHERE id = ?")
+        .get(projectId),
+    ).toEqual({ status: "reviewing_clips" });
+    expect(repository.enqueue(projectId, {}).status).toBe("queued");
+  });
 });

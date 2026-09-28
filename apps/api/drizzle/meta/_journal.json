@@ -71,6 +71,20 @@
       "when": 1790266888311,
       "tag": "0009_tough_lizard",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790513318924,
+      "tag": "0010_editor_document_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790514304100,
+      "tag": "0011_crop_rotation_and_easing",
+      "breakpoints": true
     }
   ]
 }
